@@ -21,7 +21,7 @@ def update_readme():
         except ValueError:
             return x
             
-    df_formatted = df.map(format_cell)
+    df_formatted = df.map(format_cell).astype(str)
     
     # Generate Markdown table from formatted dataframe!
     md_table = df_formatted.to_markdown()
