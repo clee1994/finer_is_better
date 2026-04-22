@@ -71,8 +71,20 @@ This section is automatically updated by the evaluation script after each run. D
 | DeepSeek 7B    |    12.2778 | 2.67717 | 2.1138 |  1.7812 |  1.6175 |  1.654  |   1.8505 |   2.1729 |
 
 ### Graphs
-![Llama 3.1 8B Gap](gap_llama_3.1_8b.png) ![Granite 3.3 8B Gap](gap_granite_3.3_8b.png)
-![Qwen 2.5 14B Gap](gap_qwen_2.5_14b.png) ![DeepSeek 7B Gap](gap_deepseek_7b.png)
+<table>
+  <tr>
+    <td><img src="plots/gap_llama_3.1_8b.png" alt="Llama 3.1 8B Gap" width="400">
+<p align="center">Llama 3.1 8B Gap</p></td>
+    <td><img src="plots/gap_granite_3.3_8b.png" alt="Granite 3.3 8B Gap" width="400">
+<p align="center">Granite 3.3 8B Gap</p></td>
+  </tr>
+  <tr>
+    <td><img src="plots/gap_qwen_2.5_14b.png" alt="Qwen 2.5 14B Gap" width="400">
+<p align="center">Qwen 2.5 14B Gap</p></td>
+    <td><img src="plots/gap_deepseek_7b.png" alt="DeepSeek 7B Gap" width="400">
+<p align="center">DeepSeek 7B Gap</p></td>
+  </tr>
+</table>
 
 
 <!-- RESULTS_END -->

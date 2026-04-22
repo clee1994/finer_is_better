@@ -33,7 +33,6 @@ def plot_model(model_name, df, output_path):
     
     plt.xlabel("Block Size", fontsize=16)
     plt.ylabel("Perplexity Gap", fontsize=16)
-    plt.title(f"Quantization Gap - {model_name}", fontsize=18)
     
     # Log scale on X axis (base 2)
     plt.xscale("log", base=2)
@@ -68,7 +67,13 @@ if __name__ == "__main__":
         
     df = pd.read_csv(csv_path, index_col=0)
     
+    # Create plots/ folder if it doesn't exist
+    plots_dir = "/home/cjsschaefer_google_com/finer_is_better/plots"
+    if not os.path.exists(plots_dir):
+        os.makedirs(plots_dir)
+        print(f"Created folder: {plots_dir}")
+        
     models = df.index.tolist()
     for m in models:
         file_suffix = m.lower().replace(" ", "_")
-        plot_model(m, df, f"/home/cjsschaefer_google_com/finer_is_better/gap_{file_suffix}.png")
+        plot_model(m, df, f"{plots_dir}/gap_{file_suffix}.png")
