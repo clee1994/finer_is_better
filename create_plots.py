@@ -2,14 +2,15 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 
+# Global font setting to serif
+plt.rcParams["font.family"] = "serif"
+
 def plot_model(model_name, df, output_path):
     plt.figure(figsize=(8, 6))
     
-    # Extract block sizes from columns
     columns = [c for c in df.columns if c.startswith("BS=")]
     block_sizes = [int(c.split("=")[1]) for c in columns]
     
-    # Extract gaps for the specific model
     gaps = []
     for c in columns:
         val = df.loc[model_name, c]
@@ -18,7 +19,6 @@ def plot_model(model_name, df, output_path):
         else:
             gaps.append(float(val))
             
-    # Filter out None values for plotting
     valid_indices = [i for i, x in enumerate(gaps) if x is not None]
     plot_x = [block_sizes[i] for i in valid_indices]
     plot_y = [gaps[i] for i in valid_indices]
@@ -28,23 +28,22 @@ def plot_model(model_name, df, output_path):
         plt.close()
         return
         
-    # Match style as exactly as possible
     # Blue line with circles
     plt.plot(plot_x, plot_y, marker="o", linestyle="-", linewidth=3, color="#1f77b4", label="NVFP4")
     
-    # Customizing plot to match style
-    plt.xlabel("Block Size", fontsize=16, fontname="serif")
-    plt.ylabel("Perplexity Gap", fontsize=16, fontname="serif")
-    plt.title(f"Quantization Gap - {model_name}", fontsize=18, fontname="serif")
+    plt.xlabel("Block Size", fontsize=16)
+    plt.ylabel("Perplexity Gap", fontsize=16)
+    plt.title(f"Quantization Gap - {model_name}", fontsize=18)
+    
+    # Log scale on X axis (base 2)
+    plt.xscale("log", base=2)
     
     # X-ticks to match specific block sizes
     plt.xticks(block_sizes, block_sizes, fontsize=14)
     plt.yticks(fontsize=14)
     
-    # Light gray dashed grid
     plt.grid(True, linestyle="--", alpha=0.7, color="#d3d3d3")
     
-    # Bold black axes
     ax = plt.gca()
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
@@ -53,7 +52,8 @@ def plot_model(model_name, df, output_path):
     ax.spines["left"].set_linewidth(2)
     ax.spines["left"].set_color("black")
     
-    plt.legend(loc="lower right", fontsize=14)
+    # No legend frame
+    plt.legend(loc="lower right", fontsize=14, frameon=False)
     plt.tight_layout()
     
     plt.savefig(output_path, dpi=300)

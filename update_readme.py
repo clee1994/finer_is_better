@@ -14,12 +14,22 @@ def update_readme():
     # Generate Markdown table
     md_table = df.to_markdown()
     
-    # Append image links
+    # Append image links side-by-side (two per line)
     image_links = "\n### Graphs\n"
-    for m in df.index:
-        file_suffix = m.lower().replace(" ", "_")
-        image_links += f"![{m} Gap](gap_{file_suffix}.png)\n"
+    models = df.index.tolist()
+    for i in range(0, len(models), 2):
+        m1 = models[i]
+        suffix1 = m1.lower().replace(" ", "_")
+        link1 = f"![{m1} Gap](gap_{suffix1}.png)"
         
+        if i + 1 < len(models):
+            m2 = models[i+1]
+            suffix2 = m2.lower().replace(" ", "_")
+            link2 = f"![{m2} Gap](gap_{suffix2}.png)"
+            image_links += f"{link1} {link2}\n"
+        else:
+            image_links += f"{link1}\n"
+            
     full_content = md_table + "\n" + image_links
     
     if not os.path.exists(readme_path):
