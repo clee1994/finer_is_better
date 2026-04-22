@@ -28,18 +28,19 @@ def plot_model(model_name, df, output_path):
         plt.close()
         return
         
-    # Blue line with circles
-    plt.plot(plot_x, plot_y, marker="o", linestyle="-", linewidth=3, color="#1f77b4", label="NVFP4")
+    # Bolder line (linewidth=4)
+    plt.plot(plot_x, plot_y, marker="o", linestyle="-", linewidth=4, color="#1f77b4", label="NVFP4")
     
-    plt.xlabel("Block Size", fontsize=16)
-    plt.ylabel("Perplexity Gap", fontsize=16)
+    # Bigger font (fontsize=18)
+    plt.xlabel("Block Size", fontsize=18)
+    plt.ylabel("Perplexity Gap", fontsize=18)
     
     # Log scale on X axis (base 2)
     plt.xscale("log", base=2)
     
-    # X-ticks to match specific block sizes
-    plt.xticks(block_sizes, block_sizes, fontsize=14)
-    plt.yticks(fontsize=14)
+    # Bigger ticks (fontsize=16)
+    plt.xticks(block_sizes, block_sizes, fontsize=16)
+    plt.yticks(fontsize=16)
     
     plt.grid(True, linestyle="--", alpha=0.7, color="#d3d3d3")
     
@@ -51,8 +52,8 @@ def plot_model(model_name, df, output_path):
     ax.spines["left"].set_linewidth(2)
     ax.spines["left"].set_color("black")
     
-    # No legend frame
-    plt.legend(loc="lower right", fontsize=14, frameon=False)
+    # Bigger legend (fontsize=16)
+    plt.legend(loc="lower right", fontsize=16, frameon=False)
     plt.tight_layout()
     
     plt.savefig(output_path, dpi=300)
@@ -67,7 +68,6 @@ if __name__ == "__main__":
         
     df = pd.read_csv(csv_path, index_col=0)
     
-    # Create plots/ folder if it doesn't exist
     plots_dir = "/home/cjsschaefer_google_com/finer_is_better/plots"
     if not os.path.exists(plots_dir):
         os.makedirs(plots_dir)

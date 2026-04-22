@@ -10,11 +10,14 @@ from mx import MxSpecs
 import pandas as pd
 import subprocess
 import os
+from mx.formats import _get_format_params
 
 # -------------------------------------------------------------------------
 # Quantization Logic - leveraging paper's fast ops
 # -------------------------------------------------------------------------
 def quantize_nvfp4(x, block_size):
+    ebits, mbits, emax, max_norm, min_norm = _get_format_params("fp8_e4m3")
+    
     mx_specs = MxSpecs(
         scale_bits=8,
         a_elem_format="fp4_e2m1",
@@ -22,6 +25,7 @@ def quantize_nvfp4(x, block_size):
         custom_cuda=True,
         a_scale_mode=152,
         w_scale_mode=152,
+        scale_min=min_norm,
     )
     
     init_shape = x.shape
@@ -117,7 +121,7 @@ def run_eval(model_id, block_size=None):
     return ppl.item()
 
 def update_csv_and_readme(model_id, bs, ppl, base_ppl):
-    path_csv = "/home/cjsschaefer_google_com/finer_is_better/results.csv"
+    path_csv = "/home/cjsschaefer_google_com/finer_is_better/results_pz.csv"
     if os.path.exists(path_csv):
         df = pd.read_csv(path_csv, index_col=0)
     else:
