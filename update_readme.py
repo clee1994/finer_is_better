@@ -11,8 +11,20 @@ def update_readme():
         
     df = pd.read_csv(csv_path, index_col=0)
     
-    # Generate Markdown table
-    md_table = df.to_markdown()
+    # Format cells to 2 decimal places with always two digits!
+    def format_cell(x):
+        if pd.isna(x) or x == "TBD":
+            return x
+        try:
+            val = float(str(x).replace("+", ""))
+            return f"+{val:.2f}" if val >= 0 else f"{val:.2f}"
+        except ValueError:
+            return x
+            
+    df_formatted = df.map(format_cell)
+    
+    # Generate Markdown table from formatted dataframe!
+    md_table = df_formatted.to_markdown()
     
     # Append image links side-by-side in an HTML table with captions below
     image_links = "\n### Graphs\n"
