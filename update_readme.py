@@ -14,6 +14,14 @@ def update_readme():
     # Generate Markdown table
     md_table = df.to_markdown()
     
+    # Append image links
+    image_links = "\n### Graphs\n"
+    for m in df.index:
+        file_suffix = m.lower().replace(" ", "_")
+        image_links += f"![{m} Gap](gap_{file_suffix}.png)\n"
+        
+    full_content = md_table + "\n" + image_links
+    
     if not os.path.exists(readme_path):
         print("README.md not found. Creating a skeleton one.")
         with open(readme_path, "w") as f:
@@ -31,14 +39,14 @@ def update_readme():
     if idx_start == -1 or idx_end == -1:
         print("Markers not found in README.md. Appending results at the end.")
         with open(readme_path, "a") as f:
-            f.write(f"\n## Results\n{marker_start}\n{md_table}\n{marker_end}\n")
+            f.write(f"\n## Results\n{marker_start}\n{full_content}\n{marker_end}\n")
     else:
         # Replace content between markers
-        new_content = readme_content[:idx_start + len(marker_start)] + "\n\n" + md_table + "\n\n" + readme_content[idx_end:]
+        new_content = readme_content[:idx_start + len(marker_start)] + "\n\n" + full_content + "\n\n" + readme_content[idx_end:]
         with open(readme_path, "w") as f:
             f.write(new_content)
             
-    print("README.md updated with results table.")
+    print("README.md updated with results table and graphs.")
 
 if __name__ == "__main__":
     update_readme()

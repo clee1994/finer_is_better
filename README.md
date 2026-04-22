@@ -70,4 +70,11 @@ This section is automatically updated by the evaluation script after each run. D
 | Qwen 2.5 14B   |     5.3577 | 1.3907  | 1.2215 |  1.1188 |  1.1582 |  1.2571 |   1.494  |   2.0615 |
 | DeepSeek 7B    |    12.2778 | 2.67717 | 2.1138 |  1.7812 |  1.6175 |  1.654  |   1.8505 |   2.1729 |
 
+### Graphs
+![Llama 3.1 8B Gap](gap_llama_3.1_8b.png)
+![Granite 3.3 8B Gap](gap_granite_3.3_8b.png)
+![Qwen 2.5 14B Gap](gap_qwen_2.5_14b.png)
+![DeepSeek 7B Gap](gap_deepseek_7b.png)
+
+
 <!-- RESULTS_END -->
