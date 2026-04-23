@@ -65,13 +65,8 @@ This section is automatically updated by the evaluation script after each run. D
 
 |                       |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |
 |:----------------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|
-| Llama 3.1 8B          |     nan    |   0.91 |   0.63 |  nan    |    0.79 |  nan    |   nan    |     1.15 |
-| Granite 3.3 8B        |     nan    | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
-| Qwen 2.5 14B          |     nan    | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
-| DeepSeek 7B           |     nan    | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
 | Llama_nvfp4_no_pz     |     nan    |   0.91 |   0.75 |    0.72 |    0.79 |    0.87 |     0.98 |   nan    |
 | Llama_nvfp4_pz        |     nan    |   0.79 |   0.73 |    0.73 |    0.77 |    0.88 |     0.99 |   nan    |
-| Llama_4over6_no_pz    |     nan    |   0.46 |   0.52 |    0.63 |    0.76 |    0.84 |     0.98 |   nan    |
 | Llama_4over6_pz       |     nan    |   0.34 |   0.4  |    0.51 |    0.62 |    0.75 |     0.88 |     1.08 |
 | Llama_ue5m3_pz        |     nan    |   0.19 |   0.32 |    0.47 |    0.58 |    0.73 |     0.88 |     1.09 |
 | Llama_nvfp4           |       6.33 | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
@@ -100,99 +95,82 @@ This section is automatically updated by the evaluation script after each run. D
 ### Graphs
 <table>
   <tr>
-    <td><img src="plots/gap_llama_3.1_8b.png" alt="Llama 3.1 8B Gap" width="400">
-<p align="center">Llama 3.1 8B Gap</p></td>
-    <td><img src="plots/gap_granite_3.3_8b.png" alt="Granite 3.3 8B Gap" width="400">
-<p align="center">Granite 3.3 8B Gap</p></td>
-  </tr>
-  <tr>
-    <td><img src="plots/gap_qwen_2.5_14b.png" alt="Qwen 2.5 14B Gap" width="400">
-<p align="center">Qwen 2.5 14B Gap</p></td>
-    <td><img src="plots/gap_deepseek_7b.png" alt="DeepSeek 7B Gap" width="400">
-<p align="center">DeepSeek 7B Gap</p></td>
-  </tr>
-  <tr>
     <td><img src="plots/gap_llama_nvfp4_no_pz.png" alt="Llama_nvfp4_no_pz Gap" width="400">
 <p align="center">Llama_nvfp4_no_pz Gap</p></td>
     <td><img src="plots/gap_llama_nvfp4_pz.png" alt="Llama_nvfp4_pz Gap" width="400">
 <p align="center">Llama_nvfp4_pz Gap</p></td>
   </tr>
   <tr>
-    <td><img src="plots/gap_llama_4over6_no_pz.png" alt="Llama_4over6_no_pz Gap" width="400">
-<p align="center">Llama_4over6_no_pz Gap</p></td>
     <td><img src="plots/gap_llama_4over6_pz.png" alt="Llama_4over6_pz Gap" width="400">
 <p align="center">Llama_4over6_pz Gap</p></td>
-  </tr>
-  <tr>
     <td><img src="plots/gap_llama_ue5m3_pz.png" alt="Llama_ue5m3_pz Gap" width="400">
 <p align="center">Llama_ue5m3_pz Gap</p></td>
+  </tr>
+  <tr>
     <td><img src="plots/gap_llama_nvfp4.png" alt="Llama_nvfp4 Gap" width="400">
 <p align="center">Llama_nvfp4 Gap</p></td>
-  </tr>
-  <tr>
     <td><img src="plots/gap_llama_ue5m3_no_pz.png" alt="Llama_ue5m3_no_pz Gap" width="400">
 <p align="center">Llama_ue5m3_no_pz Gap</p></td>
+  </tr>
+  <tr>
     <td><img src="plots/gap_llama_e4m3_no_pz.png" alt="Llama_e4m3_no_pz Gap" width="400">
 <p align="center">Llama_e4m3_no_pz Gap</p></td>
-  </tr>
-  <tr>
     <td><img src="plots/gap_llama_e4m3_pz.png" alt="Llama_e4m3_pz Gap" width="400">
 <p align="center">Llama_e4m3_pz Gap</p></td>
+  </tr>
+  <tr>
     <td><img src="plots/gap_llama_4over6_no_pz.png" alt="Llama_4over6_no_pz Gap" width="400">
 <p align="center">Llama_4over6_no_pz Gap</p></td>
-  </tr>
-  <tr>
     <td><img src="plots/gap_granite_e4m3_pz.png" alt="Granite_e4m3_pz Gap" width="400">
 <p align="center">Granite_e4m3_pz Gap</p></td>
+  </tr>
+  <tr>
     <td><img src="plots/gap_granite_e4m3_no_pz.png" alt="Granite_e4m3_no_pz Gap" width="400">
 <p align="center">Granite_e4m3_no_pz Gap</p></td>
-  </tr>
-  <tr>
     <td><img src="plots/gap_granite_4over6_no_pz.png" alt="Granite_4over6_no_pz Gap" width="400">
 <p align="center">Granite_4over6_no_pz Gap</p></td>
+  </tr>
+  <tr>
     <td><img src="plots/gap_granite_4over6_pz.png" alt="Granite_4over6_pz Gap" width="400">
 <p align="center">Granite_4over6_pz Gap</p></td>
-  </tr>
-  <tr>
     <td><img src="plots/gap_granite_ue5m3_no_pz.png" alt="Granite_ue5m3_no_pz Gap" width="400">
 <p align="center">Granite_ue5m3_no_pz Gap</p></td>
+  </tr>
+  <tr>
     <td><img src="plots/gap_granite_ue5m3_pz.png" alt="Granite_ue5m3_pz Gap" width="400">
 <p align="center">Granite_ue5m3_pz Gap</p></td>
-  </tr>
-  <tr>
     <td><img src="plots/gap_deepseek_e4m3_pz.png" alt="DeepSeek_e4m3_pz Gap" width="400">
 <p align="center">DeepSeek_e4m3_pz Gap</p></td>
+  </tr>
+  <tr>
     <td><img src="plots/gap_deepseek_e4m3_no_pz.png" alt="DeepSeek_e4m3_no_pz Gap" width="400">
 <p align="center">DeepSeek_e4m3_no_pz Gap</p></td>
-  </tr>
-  <tr>
     <td><img src="plots/gap_deepseek_4over6_no_pz.png" alt="DeepSeek_4over6_no_pz Gap" width="400">
 <p align="center">DeepSeek_4over6_no_pz Gap</p></td>
+  </tr>
+  <tr>
     <td><img src="plots/gap_deepseek_4over6_pz.png" alt="DeepSeek_4over6_pz Gap" width="400">
 <p align="center">DeepSeek_4over6_pz Gap</p></td>
-  </tr>
-  <tr>
     <td><img src="plots/gap_deepseek_ue5m3_no_pz.png" alt="DeepSeek_ue5m3_no_pz Gap" width="400">
 <p align="center">DeepSeek_ue5m3_no_pz Gap</p></td>
+  </tr>
+  <tr>
     <td><img src="plots/gap_deepseek_ue5m3_pz.png" alt="DeepSeek_ue5m3_pz Gap" width="400">
 <p align="center">DeepSeek_ue5m3_pz Gap</p></td>
-  </tr>
-  <tr>
     <td><img src="plots/gap_qwen_e4m3_no_pz.png" alt="Qwen_e4m3_no_pz Gap" width="400">
 <p align="center">Qwen_e4m3_no_pz Gap</p></td>
+  </tr>
+  <tr>
     <td><img src="plots/gap_llama_3.1_8b.png" alt="Llama 3.1 8B Gap" width="400">
 <p align="center">Llama 3.1 8B Gap</p></td>
-  </tr>
-  <tr>
     <td><img src="plots/gap_granite_3.3_8b.png" alt="Granite 3.3 8B Gap" width="400">
 <p align="center">Granite 3.3 8B Gap</p></td>
-    <td><img src="plots/gap_qwen_2.5_14b.png" alt="Qwen 2.5 14B Gap" width="400">
-<p align="center">Qwen 2.5 14B Gap</p></td>
   </tr>
   <tr>
+    <td><img src="plots/gap_qwen_2.5_14b.png" alt="Qwen 2.5 14B Gap" width="400">
+<p align="center">Qwen 2.5 14B Gap</p></td>
     <td><img src="plots/gap_deepseek_7b.png" alt="DeepSeek 7B Gap" width="400">
 <p align="center">DeepSeek 7B Gap</p></td>
-    <td></td>
   </tr>
 </table>
 
