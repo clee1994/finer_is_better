@@ -31,7 +31,7 @@ def get_ue5m3_grid():
 
 def quantize_fp8_simulate(val, prevent_zero=True, use_ue5m3=False):
     if not use_ue5m3:
-        # Clamp to max value of float8_e4m3fn to prevent overflow to NaN!
+        # Clamp to max value of float8_e4m3fn to prevent overflow to NaN
         val_clipped = torch.clamp(val, max=448.0)
         quant = val_clipped.to(torch.float8_e4m3fn).to(val.dtype)
     else:
@@ -201,14 +201,15 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, 
     
     return ppl.item()
 
-def update_csv_and_readme(model_id, bs, ppl, base_ppl, option="nvfp4"):
+def update_csv_and_readme(model_id, bs, ppl, base_ppl, option="nvfp4", csv_suffix=""):
     disp_name = model_id
     for k, v in {"granite": "Granite", "llama": "Llama", "qwen": "Qwen", "deepseek": "DeepSeek"}.items():
         if k in model_id.lower():
             disp_name = v
             break
             
-    path_csv = f"results_{disp_name.lower()}.csv"
+    # Use relative path with optional suffix
+    path_csv = f"results_{disp_name.lower()}{csv_suffix}.csv"
     
     if os.path.exists(path_csv):
         df = pd.read_csv(path_csv, index_col=0)
@@ -253,6 +254,7 @@ if __name__ == "__main__":
         four_over_six = False
         use_ue5m3 = False
         num_steps = None
+        csv_suffix = ""
         
         if len(sys.argv) > 3:
             prevent_zero = sys.argv[3].lower() == "true"
@@ -262,6 +264,8 @@ if __name__ == "__main__":
             use_ue5m3 = sys.argv[5].lower() == "true"
         if len(sys.argv) > 6:
             num_steps = int(sys.argv[6])
+        if len(sys.argv) > 7:
+            csv_suffix = sys.argv[7]
             
         option = "e4m3"
         if four_over_six:
@@ -281,7 +285,7 @@ if __name__ == "__main__":
             if base_ppl is None:
                 print(f"Baseline not found for {model_id}. Please run it first.")
                 continue
-            update_csv_and_readme(model_id, bs, ppl, base_ppl, option=option)
+            update_csv_and_readme(model_id, bs, ppl, base_ppl, option=option, csv_suffix=csv_suffix)
     else:
         ppl = run_eval(model_id, None)
         update_csv_and_readme(model_id, None, ppl, None)
