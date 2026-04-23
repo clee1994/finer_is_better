@@ -22,7 +22,10 @@ def update_readme():
             return x
 
     # Extract model names (prefix before _)
-    models = sorted(list(set([r.split("_")[0] for r in df.index])))
+    all_models = list(set([r.split("_")[0] for r in df.index]))
+    requested_order = ["Granite", "Llama", "DeepSeek", "Qwen"]
+    # Sort by requested order, then alphabetical for anything remaining
+    models = [m for m in requested_order if m in all_models] + sorted([m for m in all_models if m not in requested_order])
     
     full_content = ""
     

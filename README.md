@@ -89,17 +89,6 @@ This section is automatically updated by the evaluation script after each run. D
 
 <!-- RESULTS_START -->
 
-### DeepSeek
-
-|                  |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |
-|:-----------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|
-| e4m3             |      12.39 |   0.4  |   0.52 |    0.65 |    0.82 |    0.99 |     1.19 |     1.51 |
-| e4m3 + PZ        |      12.39 |   0.4  |   0.52 |    0.66 |    0.82 |    0.98 |     1.19 |     1.51 |
-| e4m3 + 4o6       |      12.39 |   0.25 |   0.38 |    0.54 |    0.73 |    0.93 |     1.19 |     1.49 |
-| e4m3 + 4o6 + PZ  |      12.39 |   0.25 |   0.39 |    0.54 |    0.74 |    0.94 |     1.19 |     1.49 |
-| ue5m3            |      12.39 |   0.32 |   0.48 |    0.64 |    0.82 |    0.97 |     1.22 |     1.53 |
-| ue5m3 + 4o6 + PZ |      12.39 |   0.24 |   0.36 |    0.54 |    0.72 |    0.92 |     1.2  |     1.53 |
-
 ### Granite
 
 |                  |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |
@@ -122,30 +111,29 @@ This section is automatically updated by the evaluation script after each run. D
 | ue5m3            |       6.33 |   0.28 |   0.39 |    0.53 |    0.62 |    0.74 |     0.86 |     1.09 |
 | ue5m3 + 4o6 + PZ |       6.33 |   0.1  |   0.23 |    0.38 |    0.49 |    0.63 |     0.79 |     1    |
 
-### Qwen
+### DeepSeek
 
 |                  |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |
 |:-----------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|
-| e4m3             |       5.36 |   0.47 |   0.49 |    0.56 |    0.65 |    0.81 |     1.04 |     1.49 |
-| e4m3 + PZ        |       5.36 |   0.45 |   0.48 |    0.55 |    0.64 |    0.81 |     1.04 |     1.49 |
-| e4m3 + 4o6       |       5.36 |   0.86 |   0.94 |    1.06 |    1.19 |    1.36 |     1.62 |     2.05 |
-| e4m3 + 4o6 + PZ  |       5.36 |   0.85 |   0.93 |    1.05 |    1.19 |    1.37 |     1.62 |     2.06 |
-| ue5m3            |       5.36 |   0.28 |   0.4  |    0.51 |    0.64 |    0.79 |     1.06 |     1.51 |
-| ue5m3 + 4o6 + PZ |       5.36 |   0.28 |   0.4  |    0.51 |    0.64 |    0.79 |     1.06 |     1.51 |
+| e4m3             |      12.39 |   0.4  |   0.52 |    0.65 |    0.82 |    0.99 |     1.19 |     1.51 |
+| e4m3 + PZ        |      12.39 |   0.4  |   0.52 |    0.66 |    0.82 |    0.98 |     1.19 |     1.51 |
+| e4m3 + 4o6       |      12.39 |   0.25 |   0.38 |    0.54 |    0.73 |    0.93 |     1.19 |     1.49 |
+| e4m3 + 4o6 + PZ  |      12.39 |   0.25 |   0.39 |    0.54 |    0.74 |    0.94 |     1.19 |     1.49 |
+| ue5m3            |      12.39 |   0.32 |   0.48 |    0.64 |    0.82 |    0.97 |     1.22 |     1.53 |
+| ue5m3 + 4o6 + PZ |      12.39 |   0.24 |   0.36 |    0.54 |    0.72 |    0.92 |     1.2  |     1.53 |
 
 ### Graphs
 <table>
   <tr>
-    <td><img src="plots/gap_deepseek.png" alt="DeepSeek Gap" width="400">
-<p align="center">DeepSeek Gap</p></td>
     <td><img src="plots/gap_granite.png" alt="Granite Gap" width="400">
 <p align="center">Granite Gap</p></td>
-  </tr>
-  <tr>
     <td><img src="plots/gap_llama.png" alt="Llama Gap" width="400">
 <p align="center">Llama Gap</p></td>
-    <td><img src="plots/gap_qwen.png" alt="Qwen Gap" width="400">
-<p align="center">Qwen Gap</p></td>
+  </tr>
+  <tr>
+    <td><img src="plots/gap_deepseek.png" alt="DeepSeek Gap" width="400">
+<p align="center">DeepSeek Gap</p></td>
+    <td></td>
   </tr>
 </table>
 
