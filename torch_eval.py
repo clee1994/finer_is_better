@@ -196,7 +196,8 @@ def update_csv_and_readme(model_id, bs, ppl, base_ppl, option="nvfp4"):
             disp_name = v
             break
             
-    path_csv = f"/home/cjsschaefer_google_com/finer_is_better/results_{disp_name.lower()}.csv"
+    # Use relative path!
+    path_csv = f"results_{disp_name.lower()}.csv"
     
     if os.path.exists(path_csv):
         df = pd.read_csv(path_csv, index_col=0)
@@ -214,12 +215,18 @@ def update_csv_and_readme(model_id, bs, ppl, base_ppl, option="nvfp4"):
         df.loc[row_name, f"BS={bs}"] = gap
         
     df.to_csv(path_csv)
+    
+    # Commit and push after every point!
+    subprocess.run(["git", "add", path_csv])
+    subprocess.run(["git", "commit", "-m", f"Update results for {row_name} BS={bs}"])
+    subprocess.run(["git", "pull"])
+    subprocess.run(["git", "push"])
 
 if __name__ == "__main__":
     model_id = sys.argv[1]
     
     def read_base_from_csv(model_id):
-        path_csv = "/home/cjsschaefer_google_com/finer_is_better/results.csv"
+        path_csv = "results.csv"
         if os.path.exists(path_csv):
             df = pd.read_csv(path_csv, index_col=0)
             disp_name = model_id
