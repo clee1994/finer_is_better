@@ -64,7 +64,11 @@ def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_u
         raw_scale = max_val / 6.0
         scaling_factor = quantize_fp8_simulate(raw_scale, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
         
-        scaled = torch.where(scaling_factor != 0.0, x_reshaped / scaling_factor, torch.zeros_like(x_reshaped))
+        # Safe division to mimic JAX behavior without NaN propagation!
+        safe_scale = torch.where(scaling_factor != 0.0, scaling_factor, torch.ones_like(scaling_factor))
+        scaled = x_reshaped / safe_scale
+        scaled = torch.where(scaling_factor != 0.0, scaled, torch.zeros_like(scaled))
+        
         clipped = torch.clamp(scaled, min=-6.0, max=6.0)
         
         sign = torch.sign(clipped)
@@ -80,12 +84,18 @@ def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_u
         scale_4 = quantize_fp8_simulate(raw_scale_4, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
         scale_6 = quantize_fp8_simulate(raw_scale_6, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
         
-        scaled_4 = torch.where(scale_4 != 0.0, x_reshaped / scale_4, torch.zeros_like(x_reshaped))
+        # Safe division for scale 4
+        safe_scale_4 = torch.where(scale_4 != 0.0, scale_4, torch.ones_like(scale_4))
+        scaled_4 = x_reshaped / safe_scale_4
+        scaled_4 = torch.where(scale_4 != 0.0, scaled_4, torch.zeros_like(scaled_4))
         clipped_4 = torch.clamp(scaled_4, min=-6.0, max=6.0)
         quant_4 = quantize_fp4(torch.abs(clipped_4), torch.sign(clipped_4))
         dequant_4 = quant_4 * scale_4
         
-        scaled_6 = torch.where(scale_6 != 0.0, x_reshaped / scale_6, torch.zeros_like(x_reshaped))
+        # Safe division for scale 6
+        safe_scale_6 = torch.where(scale_6 != 0.0, scale_6, torch.ones_like(scale_6))
+        scaled_6 = x_reshaped / safe_scale_6
+        scaled_6 = torch.where(scale_6 != 0.0, scaled_6, torch.zeros_like(scaled_6))
         clipped_6 = torch.clamp(scaled_6, min=-6.0, max=6.0)
         quant_6 = quantize_fp4(torch.abs(clipped_6), torch.sign(clipped_6))
         dequant_6 = quant_6 * scale_6
@@ -196,7 +206,6 @@ def update_csv_and_readme(model_id, bs, ppl, base_ppl, option="nvfp4"):
             disp_name = v
             break
             
-    # Use relative path!
     path_csv = f"results_{disp_name.lower()}.csv"
     
     if os.path.exists(path_csv):
@@ -216,7 +225,6 @@ def update_csv_and_readme(model_id, bs, ppl, base_ppl, option="nvfp4"):
         
     df.to_csv(path_csv)
     
-    # Commit and push after every point!
     subprocess.run(["git", "add", path_csv])
     subprocess.run(["git", "commit", "-m", f"Update results for {row_name} BS={bs}"])
     subprocess.run(["git", "pull"])
