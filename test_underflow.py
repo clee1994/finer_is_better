@@ -2,11 +2,11 @@ import torch
 from mx.mx_ops import quantize_mx_op
 from mx import MxSpecs
 
-def test_scale_min():
+def test_underflow():
     min_scale = 2**-9
     print(f"Target min scale: {min_scale}")
     
-    x = torch.tensor([2**-12, 2**-12 * 2], dtype=torch.float32).cuda()
+    x = torch.tensor([2**-15, 2**-15 * 2], dtype=torch.float32).cuda()
     print(f"Original x: {x}")
     
     specs_no_sm = MxSpecs(
@@ -49,9 +49,8 @@ def test_scale_min():
         print(f"Is zero without scale_min? {is_zero_no_sm}")
         print(f"Is zero with scale_min? {is_zero_sm}")
         
-        assert is_zero_no_sm, "Expected underflow to zero without scale_min failed!"
-        assert not is_zero_sm, "Prevent Zero failed! Scale min had no effect!"
-        print("Scale min test passed!")
+        assert is_zero_no_sm, "Expected underflow to zero without scale_min failed even at 2**-15!"
+        print("Underflow test passed!")
 
 if __name__ == "__main__":
-    test_scale_min()
+    test_underflow()

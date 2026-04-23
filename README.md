@@ -31,24 +31,24 @@ To set up the environment on a new machine or VM, follow these steps exactly:
 ### Baseline Perplexity Evaluation
 To calculate the baseline perplexity (WikiText-2) for a model without any quantization applied, use this command:
 ```bash
-python3 nvfp4_eval.py <model_id>
+python3 mx_qllm_eval.py <model_id>
 ```
 
 **Examples for our 4 target models:**
-- **Llama 3.1 8B**: `python3 nvfp4_eval.py meta-llama/Llama-3.1-8B`
-- **Granite 3.3 8B**: `python3 nvfp4_eval.py ibm-granite/granite-3.3-8b-base`
-- **Qwen 2.5 14B**: `python3 nvfp4_eval.py Qwen/Qwen2.5-14B`
-- **DeepSeek 7B**: `python3 nvfp4_eval.py deepseek-ai/deepseek-llm-7b-base`
+- **Llama 3.1 8B**: `python3 mx_qllm_eval.py meta-llama/Llama-3.1-8B`
+- **Granite 3.3 8B**: `python3 mx_qllm_eval.py ibm-granite/granite-3.3-8b-base`
+- **Qwen 2.5 14B**: `python3 mx_qllm_eval.py Qwen/Qwen2.5-14B`
+- **DeepSeek 7B**: `python3 mx_qllm_eval.py deepseek-ai/deepseek-llm-7b-base`
 
 ### Quantized Perplexity Evaluation
 To run the evaluation with NVFP4 element quantization and simulated FP8 scales for a specific microscale block size, use this command:
 ```bash
-python3 nvfp4_eval.py <model_id> <block_size>
+python3 mx_qllm_eval.py <model_id> <block_size>
 ```
 
 **Examples:**
-- `python3 nvfp4_eval.py meta-llama/Llama-3.1-8B 4`
-- `python3 nvfp4_eval.py Qwen/Qwen2.5-14B 16`
+- `python3 mx_qllm_eval.py meta-llama/Llama-3.1-8B 4`
+- `python3 mx_qllm_eval.py Qwen/Qwen2.5-14B 16`
 
 ## Running Tests
 
