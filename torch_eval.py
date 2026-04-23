@@ -276,16 +276,22 @@ if __name__ == "__main__":
         if len(sys.argv) > 7:
             csv_suffix = sys.argv[7]
             
-        option = "e4m3"
-        if four_over_six:
-            option = "4over6"
-        if use_ue5m3:
-            option = "ue5m3"
-            
-        if prevent_zero:
-            option += "_pz"
+        if not prevent_zero and not four_over_six and not use_ue5m3:
+            option = "e4m3"
+        elif prevent_zero and not four_over_six and not use_ue5m3:
+            option = "e4m3 + PZ"
+        elif not prevent_zero and four_over_six and not use_ue5m3:
+            option = "e4m3 + 4o6"
+        elif prevent_zero and four_over_six and not use_ue5m3:
+            option = "e4m3 + 4o6 + PZ"
+        elif prevent_zero and not four_over_six and use_ue5m3:
+            option = "ue5m3 + PZ"
+        elif not prevent_zero and four_over_six and use_ue5m3:
+            option = "ue5m3 + 4o6"
+        elif prevent_zero and four_over_six and use_ue5m3:
+            option = "ue5m3 + 4o6 + PZ"
         else:
-            option += "_no_pz"
+            option = "ue5m3_unknown"
             
         if block_sizes == [None]:
             base_ppl = None
