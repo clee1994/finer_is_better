@@ -208,7 +208,6 @@ def update_csv_and_readme(model_id, bs, ppl, base_ppl, option="nvfp4", csv_suffi
             disp_name = v
             break
             
-    # Use relative path with optional suffix
     path_csv = f"results_{disp_name.lower()}{csv_suffix}.csv"
     
     if os.path.exists(path_csv):
@@ -241,7 +240,7 @@ if __name__ == "__main__":
         if os.path.exists(path_csv):
             df = pd.read_csv(path_csv, index_col=0)
             disp_name = model_id
-            for k, v in {"granite": "Granite 3.3 8B", "llama": "Llama 3.1 8B", "qwen": "Qwen 2.5 14B", "deepseek": "DeepSeek 7B"}.items():
+            for k, v in {"granite": "Granite", "llama": "Llama", "qwen": "Qwen", "deepseek": "DeepSeek"}.items():
                 if k in model_id.lower():
                     disp_name = v
                     break
@@ -249,7 +248,11 @@ if __name__ == "__main__":
         return None
         
     if len(sys.argv) > 2:
-        block_sizes = [int(x) for x in sys.argv[2].split(",")]
+        if sys.argv[2].lower() == "none" or sys.argv[2] == "":
+            block_sizes = [None]
+        else:
+            block_sizes = [int(x) for x in sys.argv[2].split(",")]
+            
         prevent_zero = True
         four_over_six = False
         use_ue5m3 = False
@@ -262,7 +265,7 @@ if __name__ == "__main__":
             four_over_six = sys.argv[4].lower() == "true"
         if len(sys.argv) > 5:
             use_ue5m3 = sys.argv[5].lower() == "true"
-        if len(sys.argv) > 6:
+        if len(sys.argv) > 6 and sys.argv[6].lower() != "none":
             num_steps = int(sys.argv[6])
         if len(sys.argv) > 7:
             csv_suffix = sys.argv[7]
@@ -282,7 +285,7 @@ if __name__ == "__main__":
         
         for bs in block_sizes:
             ppl = run_eval(model_id, bs, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3, num_steps=num_steps)
-            if base_ppl is None:
+            if base_ppl is None and bs is not None:
                 print(f"Baseline not found for {model_id}. Please run it first.")
                 continue
             update_csv_and_readme(model_id, bs, ppl, base_ppl, option=option, csv_suffix=csv_suffix)
