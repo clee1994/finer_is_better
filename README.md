@@ -67,11 +67,11 @@ We have implemented several custom modifications to the standard FP4 quantizatio
 
 To understand why certain models (like Qwen) are sensitive to quantization, we extracted the weight and activation distributions for several layers and plotted them as log-scale overlapping histograms (Ridge Plots).
 
-### Qwen Weights Distribution
-![Qwen Weights Ridge Plot](plots/qwen_weights_ridge.png)
+### Qwen vs Granite Weights Distribution
+![Qwen vs Granite Weights Ridge Plot](plots/qwen_vs_granite_weights.png)
 
-### Qwen Activations Distribution
-![Qwen Activations Ridge Plot](plots/qwen_acts_ridge.png)
+### Qwen vs Granite Activations Distribution
+![Qwen vs Granite Activations Ridge Plot](plots/qwen_vs_granite_acts.png)
 
 ## Running Tests
 
