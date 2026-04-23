@@ -114,8 +114,8 @@ class TorchMXLinear(nn.Linear):
         q_input, _, _, _ = FP4_quant_torch(input, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3)
         return F.linear(q_input, q_weight, self.bias)
 
-def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, use_ue5m3=False):
-    print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, use_ue5m3={use_ue5m3}")
+def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, use_ue5m3=False, num_steps=None):
+    print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, use_ue5m3={use_ue5m3}, num_steps={num_steps}")
     
     tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16, trust_remote_code=True).to("cuda")
@@ -157,7 +157,18 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, 
     stride = 2048
     
     nlls = []
-    for i, _ in zip(tqdm(range(0, encodings.input_ids.size(1), stride)), range(20)):
+    
+    loop = range(0, encodings.input_ids.size(1), stride)
+    if num_steps is not None:
+        print(f"Limiting evaluation to {num_steps} steps.")
+        loop = zip(loop, range(num_steps))
+        
+    for item in tqdm(loop):
+        if num_steps is not None:
+            i, _ = item
+        else:
+            i = item
+            
         begin_loc = i
         end_loc = min(i + seq_len, encodings.input_ids.size(1))
         trg_len = end_loc - begin_loc
@@ -224,12 +235,16 @@ if __name__ == "__main__":
         prevent_zero = True
         four_over_six = False
         use_ue5m3 = False
+        num_steps = None
+        
         if len(sys.argv) > 3:
             prevent_zero = sys.argv[3].lower() == "true"
         if len(sys.argv) > 4:
             four_over_six = sys.argv[4].lower() == "true"
         if len(sys.argv) > 5:
             use_ue5m3 = sys.argv[5].lower() == "true"
+        if len(sys.argv) > 6:
+            num_steps = int(sys.argv[6])
             
         option = "e4m3"
         if four_over_six:
@@ -245,7 +260,7 @@ if __name__ == "__main__":
         base_ppl = read_base_from_csv(model_id)
         
         for bs in block_sizes:
-            ppl = run_eval(model_id, bs, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3)
+            ppl = run_eval(model_id, bs, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3, num_steps=num_steps)
             if base_ppl is None:
                 print(f"Baseline not found for {model_id}. Please run it first.")
                 continue

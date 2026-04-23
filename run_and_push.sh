@@ -12,6 +12,7 @@ BLOCK_SIZES=$2
 PREVENT_ZERO=$3
 FOUR_OVER_SIX=$4
 USE_UE5M3=$5
+NUM_STEPS=$6
 
 OPTION="e4m3"
 if [ "$FOUR_OVER_SIX" = "true" ]; then
@@ -28,7 +29,7 @@ else
 fi
 
 echo "Running evaluation for $MODEL_ID with option $OPTION..."
-python3 torch_eval.py $MODEL_ID $BLOCK_SIZES $PREVENT_ZERO $FOUR_OVER_SIX $USE_UE5M3
+python3 torch_eval.py $MODEL_ID $BLOCK_SIZES $PREVENT_ZERO $FOUR_OVER_SIX $USE_UE5M3 $NUM_STEPS
 
 DISP_NAME="unknown"
 if [[ "$MODEL_ID" == *"llama"* ]]; then
