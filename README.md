@@ -67,11 +67,11 @@ We have implemented several custom modifications to the standard FP4 quantizatio
 
 To understand why certain models (like Qwen) are sensitive to quantization, we extracted the weight and activation distributions for several layers and plotted them as log-scale overlapping histograms (Ridge Plots).
 
-### Qwen Weights Distribution
-![Qwen Weights Ridge Plot](plots/qwen_weights_ridge.png)
+### Qwen vs Granite Weights Distribution
+![Qwen vs Granite Weights Ridge Plot](plots/qwen_vs_granite_weights.png)
 
-### Qwen Activations Distribution
-![Qwen Activations Ridge Plot](plots/qwen_acts_ridge.png)
+### Qwen vs Granite Activations Distribution
+![Qwen vs Granite Activations Ridge Plot](plots/qwen_vs_granite_acts.png)
 
 ## Running Tests
 
@@ -85,61 +85,5 @@ python3 test_nvfp4.py
 This section is automatically updated by the evaluation script after each run. Do not edit manually.
 
 <!-- RESULTS_START -->
-
-### DeepSeek
-
-|                 |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |
-|:----------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|
-| e4m3            |      12.39 |   0.4  |   0.52 |    0.65 |    0.82 |    0.99 |     1.19 |     1.51 |
-| e4m3 + PZ       |      12.39 |   0.4  |   0.52 |    0.66 |    0.82 |    0.98 |     1.19 |     1.51 |
-| e4m3 + 4o6      |      12.39 |   0.25 |   0.38 |    0.54 |    0.73 |    0.93 |     1.19 |     1.49 |
-| e4m3 + 4o6 + PZ |      12.39 |   0.25 |   0.39 |    0.54 |    0.74 |    0.94 |     1.19 |     1.49 |
-| ue5m3           |      12.39 |   0.32 |   0.48 |    0.64 |    0.82 |    0.97 |     1.22 |     1.53 |
-| ue5m3 + PZ      |      12.39 |   0.24 |   0.36 |    0.54 |    0.72 |    0.92 |     1.2  |     1.53 |
-
-### Granite
-
-|                 |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |
-|:----------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|
-| e4m3            |       4.91 |   1.06 |   0.89 |    0.83 |    0.86 |    0.96 |     1.13 |     1.5  |
-| e4m3 + PZ       |       4.91 |   0.96 |   0.88 |    0.83 |    0.87 |    0.96 |     1.13 |     1.5  |
-| e4m3 + 4o6      |       4.91 |   0.62 |   0.67 |    0.75 |    0.88 |    0.97 |     1.13 |     1.48 |
-| e4m3 + 4o6 + PZ |       4.91 |   0.62 |   0.67 |    0.75 |    0.89 |    0.97 |     1.13 |     1.48 |
-| ue5m3           |       4.91 |   0.16 |   0.23 |    0.3  |    0.38 |    0.57 |     0.79 |     1.19 |
-| ue5m3 + PZ      |       4.91 |   0.11 |   0.17 |    0.25 |    0.36 |    0.57 |     0.77 |     1.23 |
-
-### Llama
-
-|                 |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |
-|:----------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|
-| e4m3            |       6.33 |   0.81 |   0.65 |    0.62 |    0.67 |    0.75 |     0.88 |     1.07 |
-| e4m3 + PZ       |       6.33 |   0.68 |   0.63 |    0.62 |    0.66 |    0.76 |     0.89 |     1.07 |
-| e4m3 + 4o6      |       6.33 |   0.36 |   0.41 |    0.51 |    0.61 |    0.75 |     0.88 |     1.08 |
-| e4m3 + 4o6 + PZ |       6.33 |   0.34 |   0.4  |    0.51 |    0.62 |    0.75 |     0.88 |     1.08 |
-| ue5m3           |       6.33 |   0.28 |   0.39 |    0.53 |    0.62 |    0.74 |     0.86 |     1.09 |
-| ue5m3 + PZ      |       6.33 |   0.19 |   0.32 |    0.47 |    0.58 |    0.73 |     0.88 |     1.09 |
-
-### Qwen
-
-|      |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |
-|:-----|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|
-| e4m3 |       4.77 |   0.47 |   0.49 |    0.56 |    0.65 |    0.81 |     1.04 |     1.49 |
-
-### Graphs
-<table>
-  <tr>
-    <td><img src="plots/gap_deepseek.png" alt="DeepSeek Gap" width="400">
-<p align="center">DeepSeek Gap</p></td>
-    <td><img src="plots/gap_granite.png" alt="Granite Gap" width="400">
-<p align="center">Granite Gap</p></td>
-  </tr>
-  <tr>
-    <td><img src="plots/gap_llama.png" alt="Llama Gap" width="400">
-<p align="center">Llama Gap</p></td>
-    <td><img src="plots/gap_qwen.png" alt="Qwen Gap" width="400">
-<p align="center">Qwen Gap</p></td>
-  </tr>
-</table>
-
 
 <!-- RESULTS_END -->
