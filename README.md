@@ -69,12 +69,7 @@ To understand why certain models (like Qwen) are sensitive to quantization, we e
 
 ### Qwen vs Granite Distributions
 
-<table>
-  <tr>
-    <td><img src="plots/qwen_vs_granite_weights.png" alt="Weights Contrast" width="400"><p align="center">Weights Contrast</p></td>
-    <td><img src="plots/qwen_vs_granite_acts.png" alt="Activations Contrast" width="400"><p align="center">Activations Contrast</p></td>
-  </tr>
-</table>
+![Weights and Activations Distributions](plots/qwen_vs_granite_dist.png)
 
 ## Running Tests
 
@@ -124,9 +119,6 @@ This section is automatically updated by the evaluation script after each run. D
 
 ### Perplexity Gap All Models
 ![Perplexity Gap All Models](plots/gap_all_models.png)
-
-### Weights and Activations Distributions
-![Weights and Activations Distributions](plots/qwen_vs_granite_dist.png)
 
 
 
