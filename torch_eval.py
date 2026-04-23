@@ -245,9 +245,10 @@ if __name__ == "__main__":
                     disp_name = v
                     break
             
-            # Safe lookup to prevent KeyError!
-            if disp_name in df.index:
-                return df.loc[disp_name, "Baseline"]
+            # Search for any row starting with disp_name and having non-empty Baseline
+            for idx in df.index:
+                if idx.startswith(disp_name) and not pd.isna(df.loc[idx, "Baseline"]):
+                    return float(df.loc[idx, "Baseline"])
         return None
         
     if len(sys.argv) > 2:
@@ -284,11 +285,7 @@ if __name__ == "__main__":
         else:
             option += "_no_pz"
             
-        # Skip baseline lookup for baseline runs!
-        if block_sizes == [None]:
-            base_ppl = None
-        else:
-            base_ppl = read_base_from_csv(model_id)
+        base_ppl = read_base_from_csv(model_id)
         
         for bs in block_sizes:
             ppl = run_eval(model_id, bs, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3, num_steps=num_steps)
