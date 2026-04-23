@@ -1,79 +1,130 @@
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import os
+import sys
 
-# Global font setting to serif
-plt.rcParams["font.family"] = "serif"
+def apply_style():
+  """Configures matplotlib for publication-quality plots (NeurIPS style)."""
+  
+  # Reset to defaults to avoid state pollution
+  mpl.rcParams.update(mpl.rcParamsDefault)
+
+  # Font Configuration
+  mpl.rcParams[font.family] = serif
+  mpl.rcParams[font.serif] = [Times New Roman, DejaVu Serif, serif]
+  mpl.rcParams[font.size] = 10
+  mpl.rcParams[axes.labelsize] = 10
+  mpl.rcParams[axes.titlesize] = 10
+  mpl.rcParams[xtick.labelsize] = 8
+  mpl.rcParams[ytick.labelsize] = 8
+  mpl.rcParams[legend.fontsize] = 8
+  mpl.rcParams[figure.titlesize] = 12
+
+  # Figure Size
+  mpl.rcParams[figure.figsize] = (6.5, 4.0)
+  mpl.rcParams[figure.dpi] = 300
+  mpl.rcParams[savefig.dpi] = 300
+  mpl.rcParams[figure.constrained_layout.use] = True
+
+  # Axes and Spines
+  mpl.rcParams[axes.spines.top] = False
+  mpl.rcParams[axes.spines.right] = False
+  mpl.rcParams[axes.linewidth] = 0.8
+  mpl.rcParams[axes.edgecolor] = black
+  mpl.rcParams[xtick.major.width] = 0.8
+  mpl.rcParams[ytick.major.width] = 0.8
+  mpl.rcParams[xtick.minor.width] = 0.6
+  mpl.rcParams[ytick.minor.width] = 0.6
+  mpl.rcParams[xtick.direction] = out
+  mpl.rcParams[ytick.direction] = out
+
+  # Grid
+  mpl.rcParams[axes.grid] = True
+  mpl.rcParams[grid.alpha] = 0.3
+  mpl.rcParams[grid.linestyle] = --
+  mpl.rcParams[grid.linewidth] = 0.6
+
+  # Colors (Colorblind friendly palette)
+  cycle = mpl.cycler(color=[#4C72B0, #DD8452, #55A868, #C44E52, #8172B3, #937860, #DA8BC3, #8C8C8C, #CCB974, #64B5CD])
+  mpl.rcParams[axes.prop_cycle] = cycle
+
+  # Legend
+  mpl.rcParams[legend.frameon] = False
+  mpl.rcParams[legend.loc] = best
+  
+  # Saving
+  mpl.rcParams[savefig.bbox] = tight
+  mpl.rcParams[savefig.pad_inches] = 0.05
 
 def plot_model(model_name, df, output_path):
-    plt.figure(figsize=(8, 6))
-    
+    plt.figure()
+
     columns = [c for c in df.columns if c.startswith("BS=")]
     block_sizes = [int(c.split("=")[1]) for c in columns]
+
+    # Find all rows for this model
+    rows = [r for r in df.index if r.startswith(model_name)]
     
-    gaps = []
-    for c in columns:
-        val = df.loc[model_name, c]
-        if pd.isna(val) or val == "TBD":
-            gaps.append(None)
-        else:
-            gaps.append(float(val))
-            
-    valid_indices = [i for i, x in enumerate(gaps) if x is not None]
-    plot_x = [block_sizes[i] for i in valid_indices]
-    plot_y = [gaps[i] for i in valid_indices]
-    
-    if not plot_x:
-        print(f"No valid data for {model_name}. Skipping plot.")
+    if not rows:
+        print(f"No data for {model_name}. Skipping plot.")
         plt.close()
         return
         
-    # Bolder line (linewidth=4)
-    plt.plot(plot_x, plot_y, marker="o", linestyle="-", linewidth=4, color="#1f77b4", label="NVFP4")
-    
-    # Bigger font (fontsize=18)
-    plt.xlabel("Block Size", fontsize=18)
-    plt.ylabel("Perplexity Gap", fontsize=18)
-    
-    # Log scale on X axis (base 2)
+    for row in rows:
+        option = row.replace(model_name + "_", "")
+        
+        gaps = []
+        for c in columns:
+            val = df.loc[row, c]
+            if pd.isna(val) or val == "TBD":
+                gaps.append(None)
+            else:
+                gaps.append(float(val))
+
+        valid_indices = [i for i, x in enumerate(gaps) if x is not None]
+        plot_x = [block_sizes[i] for i in valid_indices]
+        plot_y = [gaps[i] for i in valid_indices]
+
+        if not plot_x:
+            continue
+
+        plt.plot(plot_x, plot_y, marker="o", linestyle="-", linewidth=2, label=option)
+
+    plt.xlabel("Block Size")
+    plt.ylabel("Perplexity Gap")
+
     plt.xscale("log", base=2)
-    
-    # Bigger ticks (fontsize=16)
-    plt.xticks(block_sizes, block_sizes, fontsize=16)
-    plt.yticks(fontsize=16)
-    
-    plt.grid(True, linestyle="--", alpha=0.7, color="#d3d3d3")
-    
-    ax = plt.gca()
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.spines["bottom"].set_linewidth(2)
-    ax.spines["bottom"].set_color("black")
-    ax.spines["left"].set_linewidth(2)
-    ax.spines["left"].set_color("black")
-    
-    # Bigger legend (fontsize=16)
-    plt.legend(loc="lower right", fontsize=16, frameon=False)
-    plt.tight_layout()
-    
-    plt.savefig(output_path, dpi=300)
+    plt.xticks(block_sizes, block_sizes)
+
+    plt.legend()
+
+    plt.savefig(output_path)
     plt.close()
     print(f"Plot saved to {output_path}")
 
 if __name__ == "__main__":
-    csv_path = "/home/cjsschaefer_google_com/finer_is_better/results.csv"
-    if not os.path.exists(csv_path):
-        print("CSV file not found. Skipping plotting.")
-        exit(1)
-        
-    df = pd.read_csv(csv_path, index_col=0)
+    apply_style()
     
+    # Default to results_torch.csv for simulation results!
+    csv_path = "/home/cjsschaefer_google_com/finer_is_better/results_torch.csv"
+    if len(sys.argv) > 1:
+        csv_path = sys.argv[1]
+        
+    if not os.path.exists(csv_path):
+        print(f"CSV file {csv_path} not found. Skipping plotting.")
+        exit(1)
+
+    df = pd.read_csv(csv_path, index_col=0)
+
     plots_dir = "/home/cjsschaefer_google_com/finer_is_better/plots"
     if not os.path.exists(plots_dir):
         os.makedirs(plots_dir)
         print(f"Created folder: {plots_dir}")
-        
-    models = df.index.tolist()
+
+    # Extract model names (prefix before _)
+    models = list(set([r.split("_")[0] for r in df.index]))
+    
     for m in models:
         file_suffix = m.lower().replace(" ", "_")
         plot_model(m, df, f"{plots_dir}/gap_{file_suffix}.png")

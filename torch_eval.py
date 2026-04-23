@@ -9,94 +9,113 @@ import pandas as pd
 import subprocess
 import os
 
-def quantize_fp8_simulate(val):
-    # Clamp to max representable in FP8 UE4M3 (bias=7): 240.0
-    val = torch.clamp(val, min=0.0, max=240.0)
+_UE5M3_GRID = None
+
+def get_ue5m3_grid():
+    global _UE5M3_GRID
+    if _UE5M3_GRID is None:
+        grid = []
+        # Subnormals (e=0)
+        for m in range(8):
+            val = (m / 8.0) * (2**-14)
+            grid.append(val)
+            
+        # Normals (e=1..30)
+        for e in range(1, 31):
+            for m in range(8):
+                val = (1.0 + m / 8.0) * (2**(e - 15))
+                grid.append(val)
+                
+        _UE5M3_GRID = torch.tensor(sorted(list(set(grid))), dtype=torch.float32).cuda()
+    return _UE5M3_GRID
+
+def quantize_fp8_simulate(val, prevent_zero=True, use_ue5m3=False):
+    if not use_ue5m3:
+        quant = val.to(torch.float8_e4m3fn).to(val.dtype)
+    else:
+        grid = get_ue5m3_grid()
+        dist = torch.abs(val.unsqueeze(-1) - grid)
+        idx = torch.argmin(dist, dim=-1)
+        quant = grid[idx]
+        
+    if prevent_zero:
+        min_scale = 2**-9
+        quant = torch.where(quant == 0.0, min_scale, quant)
     
-    is_normal = val >= 2**-6
-    
-    # Subnormal quantization: step is 2**-9
-    quant_sub = torch.round(val / 2**-9) * 2**-9
-    
-    # Normal quantization:
-    e = torch.floor(torch.log2(val))
-    e_clipped = torch.clamp(e, max=7.0)
-    m = torch.round((val / 2**e_clipped - 1.0) * 8.0)
-    
-    # Carry-over handling
-    carry = m == 8.0
-    e_clipped = torch.where(carry, e_clipped + 1.0, e_clipped)
-    m = torch.where(carry, torch.zeros_like(m), m)
-    
-    quant_norm = (1.0 + m/8.0) * 2**e_clipped
-    
-    quant = torch.where(is_normal, quant_norm, quant_sub)
-    
-    # Prevent Zero trick
-    min_scale = 2**-9
-    quant = torch.where(quant == 0.0, min_scale, quant)
-    
-    return quant
+    return quant.reshape(val.shape)
 
 # -------------------------------------------------------------------------
 # Quantization Logic (Pure PyTorch Simulation)
 # -------------------------------------------------------------------------
-def FP4_quant_torch(x, block_size):
+def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_ue5m3=False):
     init_shape = x.shape
     x_reshaped = x.reshape(-1, block_size)
     
-    # Line 2 in JAX: max_val = jnp.max(jnp.abs(x), axis=0, keepdims=True)
     max_val = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
     
-    # Line 3 in JAX: raw_scale = max_val / 6.0
-    raw_scale = max_val / 6.0
-    
-    # Line 4 in JAX: scaling_factor = jnp.float32(jnp.float8_e4m3fn(raw_scale))
-    # Use our proper FP8 simulation!
-    scaling_factor = quantize_fp8_simulate(raw_scale)
-    
-    # Line 5 in JAX: scaled = jnp.where(scaling_factor != 0, x / scaling_factor, 0.0)
-    scaled = x_reshaped / scaling_factor
-    
-    # Line 6 in JAX: clipped = jnp.clip(scaled, -6.0, 6.0)
-    clipped = torch.clamp(scaled, min=-6.0, max=6.0)
-    
-    # Preserve sign!
-    sign = torch.sign(clipped)
-    abs_clipped = torch.abs(clipped)
-    
-    # Line 7 in JAX: quant = np.float32(jnp.float4_e2m1fn(clipped))
-    # Map to the discrete FP4 grid: [0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0]
-    grid = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0], dtype=torch.float32).cuda()
-    dist = torch.abs(abs_clipped.unsqueeze(-1) - grid)
-    idx = torch.argmin(dist, dim=-1)
-    quant = grid[idx]
-    
-    # Apply sign back!
-    quant = quant * sign
-    
-    # Dequantize
-    dequant = quant * scaling_factor
-    
-    # Return dequant, quant, and scaling_factor!
-    return dequant.reshape(init_shape).to(x.dtype), quant.reshape(init_shape), scaling_factor
+    def quantize_fp4(abs_clipped, sign):
+        th = torch.tensor([0.250125, 0.749765, 1.250495, 1.749515, 2.500990, 3.499030, 5.001970], dtype=torch.float32).cuda()
+        grid = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0], dtype=torch.float32).cuda()
+        idx = torch.bucketize(abs_clipped, th)
+        quant = grid[idx]
+        return quant * sign
+        
+    if not four_over_six:
+        raw_scale = max_val / 6.0
+        scaling_factor = quantize_fp8_simulate(raw_scale, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
+        
+        scaled = torch.where(scaling_factor != 0.0, x_reshaped / scaling_factor, torch.zeros_like(x_reshaped))
+        clipped = torch.clamp(scaled, min=-6.0, max=6.0)
+        
+        sign = torch.sign(clipped)
+        abs_clipped = torch.abs(clipped)
+        
+        quant = quantize_fp4(abs_clipped, sign)
+        dequant = quant * scaling_factor
+        use_4 = torch.zeros_like(scaling_factor, dtype=torch.bool)
+    else:
+        raw_scale_4 = (max_val / 6.0) * 1.5
+        raw_scale_6 = max_val / 6.0
+        
+        scale_4 = quantize_fp8_simulate(raw_scale_4, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
+        scale_6 = quantize_fp8_simulate(raw_scale_6, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
+        
+        scaled_4 = torch.where(scale_4 != 0.0, x_reshaped / scale_4, torch.zeros_like(x_reshaped))
+        clipped_4 = torch.clamp(scaled_4, min=-6.0, max=6.0)
+        quant_4 = quantize_fp4(torch.abs(clipped_4), torch.sign(clipped_4))
+        dequant_4 = quant_4 * scale_4
+        
+        scaled_6 = torch.where(scale_6 != 0.0, x_reshaped / scale_6, torch.zeros_like(x_reshaped))
+        clipped_6 = torch.clamp(scaled_6, min=-6.0, max=6.0)
+        quant_6 = quantize_fp4(torch.abs(clipped_6), torch.sign(clipped_6))
+        dequant_6 = quant_6 * scale_6
+        
+        mse_4 = torch.mean((x_reshaped - dequant_4)**2, dim=-1, keepdim=True)
+        mse_6 = torch.mean((x_reshaped - dequant_6)**2, dim=-1, keepdim=True)
+        
+        use_4 = mse_4 < mse_6
+        
+        dequant = torch.where(use_4, dequant_4, dequant_6)
+        quant = torch.where(use_4, quant_4, quant_6)
+        scaling_factor = torch.where(use_4, scale_4, scale_6)
+        
+    return dequant.reshape(init_shape).to(x.dtype), quant.reshape(init_shape), scaling_factor, use_4
 
 class TorchMXLinear(nn.Linear):
-    def __init__(self, in_features, out_features, bias=True, block_size=32):
+    def __init__(self, in_features, out_features, bias=True, block_size=32, prevent_zero=True, four_over_six=False, use_ue5m3=False):
         super().__init__(in_features, out_features, bias)
         self.block_size = block_size
+        self.prevent_zero = prevent_zero
+        self.four_over_six = four_over_six
+        self.use_ue5m3 = use_ue5m3
         
     def forward(self, input):
-        # Only use the first return value (dequantized) for linear op!
-        q_weight, _, _ = FP4_quant_torch(self.weight, self.block_size)
-        q_input, _, _ = FP4_quant_torch(input, self.block_size)
+        q_weight, _, _, _ = FP4_quant_torch(self.weight, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3)
+        q_input, _, _, _ = FP4_quant_torch(input, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3)
         return F.linear(q_input, q_weight, self.bias)
 
-# -------------------------------------------------------------------------
-# Evaluation Logic
-# -------------------------------------------------------------------------
-def run_eval(model_id, block_size=None):
-    print(f"Evaluating {model_id} with block size {block_size}")
+def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, use_ue5m3=False):
+    print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, use_ue5m3={use_ue5m3}")
     
     tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16, trust_remote_code=True).to("cuda")
@@ -124,7 +143,7 @@ def run_eval(model_id, block_size=None):
                          father_module = getattr(father_module, part)
                 
                 idx = idx + 1 if idx != 0 else idx
-                new_m = TorchMXLinear(module.in_features, module.out_features, module.bias is not None, block_size=block_size)
+                new_m = TorchMXLinear(module.in_features, module.out_features, module.bias is not None, block_size=block_size, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3)
                 new_m.weight.data = module.weight.data
                 new_m.bias = module.bias
                 print(f"Replacing layer: {name}")
@@ -159,31 +178,31 @@ def run_eval(model_id, block_size=None):
     
     return ppl.item()
 
-def update_csv_and_readme(model_id, bs, ppl, base_ppl):
-    path_csv = "/home/cjsschaefer_google_com/finer_is_better/results_torch.csv"
-    if os.path.exists(path_csv):
-        df = pd.read_csv(path_csv, index_col=0)
-    else:
-        models = ["Llama 3.1 8B", "Granite 3.3 8B", "Qwen 2.5 14B", "DeepSeek 7B"]
-        columns = ["Baseline", "BS=4", "BS=8", "BS=16", "BS=32", "BS=64", "BS=128", "BS=256"]
-        df = pd.DataFrame(index=models, columns=columns)
-        df.index.name = "Model"
-        
+def update_csv_and_readme(model_id, bs, ppl, base_ppl, option="nvfp4"):
     disp_name = model_id
-    for k, v in {"granite": "Granite 3.3 8B", "llama": "Llama 3.1 8B", "qwen": "Qwen 2.5 14B", "deepseek": "DeepSeek 7B"}.items():
+    for k, v in {"granite": "Granite", "llama": "Llama", "qwen": "Qwen", "deepseek": "DeepSeek"}.items():
         if k in model_id.lower():
             disp_name = v
             break
             
+    path_csv = f"/home/cjsschaefer_google_com/finer_is_better/results_{disp_name.lower()}.csv"
+    
+    if os.path.exists(path_csv):
+        df = pd.read_csv(path_csv, index_col=0)
+    else:
+        columns = ["Baseline", "BS=4", "BS=8", "BS=16", "BS=32", "BS=64", "BS=128", "BS=256"]
+        df = pd.DataFrame(columns=columns)
+        df.index.name = "Model_Config"
+        
+    row_name = f"{disp_name}_{option}"
+    
     if bs is None:
-        df.loc[disp_name, "Baseline"] = ppl
+        df.loc[row_name, "Baseline"] = ppl
     else:
         gap = ppl - base_ppl
-        df.loc[disp_name, f"BS={bs}"] = gap
+        df.loc[row_name, f"BS={bs}"] = gap
         
     df.to_csv(path_csv)
-    
-    subprocess.run(["python3", "/home/cjsschaefer_google_com/finer_is_better/update_readme.py"])
 
 if __name__ == "__main__":
     model_id = sys.argv[1]
@@ -202,14 +221,35 @@ if __name__ == "__main__":
         
     if len(sys.argv) > 2:
         block_sizes = [int(x) for x in sys.argv[2].split(",")]
+        prevent_zero = True
+        four_over_six = False
+        use_ue5m3 = False
+        if len(sys.argv) > 3:
+            prevent_zero = sys.argv[3].lower() == "true"
+        if len(sys.argv) > 4:
+            four_over_six = sys.argv[4].lower() == "true"
+        if len(sys.argv) > 5:
+            use_ue5m3 = sys.argv[5].lower() == "true"
+            
+        option = "e4m3"
+        if four_over_six:
+            option = "4over6"
+        if use_ue5m3:
+            option = "ue5m3"
+            
+        if prevent_zero:
+            option += "_pz"
+        else:
+            option += "_no_pz"
+            
         base_ppl = read_base_from_csv(model_id)
         
         for bs in block_sizes:
-            ppl = run_eval(model_id, bs)
+            ppl = run_eval(model_id, bs, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3)
             if base_ppl is None:
                 print(f"Baseline not found for {model_id}. Please run it first.")
                 continue
-            update_csv_and_readme(model_id, bs, ppl, base_ppl)
+            update_csv_and_readme(model_id, bs, ppl, base_ppl, option=option)
     else:
         ppl = run_eval(model_id, None)
         update_csv_and_readme(model_id, None, ppl, None)
