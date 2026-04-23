@@ -122,20 +122,9 @@ This section is automatically updated by the evaluation script after each run. D
 | ue5m3            |      12.39 |   0.32 |   0.48 |    0.64 |    0.82 |    0.97 |     1.22 |     1.53 |
 | ue5m3 + 4o6 + PZ |      12.39 |   0.24 |   0.36 |    0.54 |    0.72 |    0.92 |     1.2  |     1.53 |
 
-### Graphs
-<table>
-  <tr>
-    <td><img src="plots/gap_granite.png" alt="Granite Gap" width="400">
-<p align="center">Granite Gap</p></td>
-    <td><img src="plots/gap_llama.png" alt="Llama Gap" width="400">
-<p align="center">Llama Gap</p></td>
-  </tr>
-  <tr>
-    <td><img src="plots/gap_deepseek.png" alt="DeepSeek Gap" width="400">
-<p align="center">DeepSeek Gap</p></td>
-    <td></td>
-  </tr>
-</table>
+### Perplexity Gap All Models
+![Perplexity Gap All Models](plots/gap_all_models.png)
+
 
 
 <!-- RESULTS_END -->
