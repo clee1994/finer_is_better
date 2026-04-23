@@ -10,9 +10,10 @@ import subprocess
 import os
 
 _UE5M3_GRID = None
+_UE5M3_TH = None
 
 def get_ue5m3_grid():
-    global _UE5M3_GRID
+    global _UE5M3_GRID, _UE5M3_TH
     if _UE5M3_GRID is None:
         grid = []
         # Subnormals (e=0)
@@ -27,7 +28,8 @@ def get_ue5m3_grid():
                 grid.append(val)
                 
         _UE5M3_GRID = torch.tensor(sorted(list(set(grid))), dtype=torch.float32).cuda()
-    return _UE5M3_GRID
+        _UE5M3_TH = (_UE5M3_GRID[:-1] + _UE5M3_GRID[1:]) / 2
+    return _UE5M3_GRID, _UE5M3_TH
 
 def quantize_fp8_simulate(val, prevent_zero=True, use_ue5m3=False):
     if not use_ue5m3:
@@ -35,9 +37,9 @@ def quantize_fp8_simulate(val, prevent_zero=True, use_ue5m3=False):
         val_clipped = torch.clamp(val, max=448.0)
         quant = val_clipped.to(torch.float8_e4m3fn).to(val.dtype)
     else:
-        grid = get_ue5m3_grid()
-        dist = torch.abs(val.unsqueeze(-1) - grid)
-        idx = torch.argmin(dist, dim=-1)
+        grid, th = get_ue5m3_grid()
+        # Use bucketize for O(log K) search instead of O(K) distance calculation!
+        idx = torch.bucketize(val, th)
         quant = grid[idx]
         
     if prevent_zero:
@@ -285,7 +287,10 @@ if __name__ == "__main__":
         else:
             option += "_no_pz"
             
-        base_ppl = read_base_from_csv(model_id)
+        if block_sizes == [None]:
+            base_ppl = None
+        else:
+            base_ppl = read_base_from_csv(model_id)
         
         for bs in block_sizes:
             ppl = run_eval(model_id, bs, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3, num_steps=num_steps)
