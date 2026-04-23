@@ -120,14 +120,8 @@ This section is automatically updated by the evaluation script after each run. D
 ### Perplexity Gap All Models
 ![Perplexity Gap All Models](plots/gap_all_models.png)
 
-### Weights and Activations Distributions (Base 10)
-![Base 10](plots/qwen_vs_granite_dist_base10.png)
-
-### Weights and Activations Distributions (Base 2)
-![Base 2](plots/qwen_vs_granite_dist_base2.png)
-
-### Weights and Activations Distributions (Base e)
-![Base e](plots/qwen_vs_granite_dist_basee.png)
+### Weights and Activations Distributions
+![Weights and Activations Distributions](plots/qwen_vs_granite_dist.png)
 
 
 
