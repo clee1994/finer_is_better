@@ -65,11 +65,9 @@ This section is automatically updated by the evaluation script after each run. D
 
 |                       |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |
 |:----------------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|
-| Llama_nvfp4_no_pz     |     nan    |   0.91 |   0.75 |    0.72 |    0.79 |    0.87 |     0.98 |   nan    |
-| Llama_nvfp4_pz        |     nan    |   0.79 |   0.73 |    0.73 |    0.77 |    0.88 |     0.99 |   nan    |
 | Llama_4over6_pz       |     nan    |   0.34 |   0.4  |    0.51 |    0.62 |    0.75 |     0.88 |     1.08 |
 | Llama_ue5m3_pz        |     nan    |   0.19 |   0.32 |    0.47 |    0.58 |    0.73 |     0.88 |     1.09 |
-| Llama_nvfp4           |       6.33 | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
+| Llama_e4m3            |       6.33 | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
 | Llama_ue5m3_no_pz     |     nan    |   0.28 |   0.39 |    0.53 |    0.62 |    0.74 |     0.86 |     1.09 |
 | Llama_e4m3_no_pz      |     nan    |   0.81 |   0.65 |    0.62 |    0.67 |    0.75 |     0.88 |     1.07 |
 | Llama_e4m3_pz         |     nan    |   0.68 |   0.63 |    0.62 |    0.66 |    0.76 |     0.89 |     1.07 |
@@ -95,20 +93,14 @@ This section is automatically updated by the evaluation script after each run. D
 ### Graphs
 <table>
   <tr>
-    <td><img src="plots/gap_llama_nvfp4_no_pz.png" alt="Llama_nvfp4_no_pz Gap" width="400">
-<p align="center">Llama_nvfp4_no_pz Gap</p></td>
-    <td><img src="plots/gap_llama_nvfp4_pz.png" alt="Llama_nvfp4_pz Gap" width="400">
-<p align="center">Llama_nvfp4_pz Gap</p></td>
-  </tr>
-  <tr>
     <td><img src="plots/gap_llama_4over6_pz.png" alt="Llama_4over6_pz Gap" width="400">
 <p align="center">Llama_4over6_pz Gap</p></td>
     <td><img src="plots/gap_llama_ue5m3_pz.png" alt="Llama_ue5m3_pz Gap" width="400">
 <p align="center">Llama_ue5m3_pz Gap</p></td>
   </tr>
   <tr>
-    <td><img src="plots/gap_llama_nvfp4.png" alt="Llama_nvfp4 Gap" width="400">
-<p align="center">Llama_nvfp4 Gap</p></td>
+    <td><img src="plots/gap_llama_e4m3.png" alt="Llama_e4m3 Gap" width="400">
+<p align="center">Llama_e4m3 Gap</p></td>
     <td><img src="plots/gap_llama_ue5m3_no_pz.png" alt="Llama_ue5m3_no_pz Gap" width="400">
 <p align="center">Llama_ue5m3_no_pz Gap</p></td>
   </tr>
