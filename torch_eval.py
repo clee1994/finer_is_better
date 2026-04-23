@@ -31,7 +31,9 @@ def get_ue5m3_grid():
 
 def quantize_fp8_simulate(val, prevent_zero=True, use_ue5m3=False):
     if not use_ue5m3:
-        quant = val.to(torch.float8_e4m3fn).to(val.dtype)
+        # Clamp to max value of float8_e4m3fn to prevent overflow to NaN!
+        val_clipped = torch.clamp(val, max=448.0)
+        quant = val_clipped.to(torch.float8_e4m3fn).to(val.dtype)
     else:
         grid = get_ue5m3_grid()
         dist = torch.abs(val.unsqueeze(-1) - grid)
@@ -64,7 +66,7 @@ def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_u
         raw_scale = max_val / 6.0
         scaling_factor = quantize_fp8_simulate(raw_scale, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
         
-        # Safe division to mimic JAX behavior without NaN propagation!
+        # Safe division to mimic JAX behavior without NaN propagation
         safe_scale = torch.where(scaling_factor != 0.0, scaling_factor, torch.ones_like(scaling_factor))
         scaled = x_reshaped / safe_scale
         scaled = torch.where(scaling_factor != 0.0, scaled, torch.zeros_like(scaled))
