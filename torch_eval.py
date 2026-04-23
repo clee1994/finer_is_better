@@ -36,14 +36,15 @@ def quantize_fp8_simulate(val, prevent_zero=True, use_ue5m3=False):
         # Clamp to max value of float8_e4m3fn to prevent overflow to NaN
         val_clipped = torch.clamp(val, max=448.0)
         quant = val_clipped.to(torch.float8_e4m3fn).to(val.dtype)
+        min_scale = 2**-9
     else:
         grid, th = get_ue5m3_grid()
         # Use bucketize for O(log K) search instead of O(K) distance calculation!
         idx = torch.bucketize(val, th)
         quant = grid[idx]
+        min_scale = 2**-17 # Smallest non-zero subnormal in UE5M3
         
     if prevent_zero:
-        min_scale = 2**-9
         quant = torch.where(quant == 0.0, min_scale, quant)
     
     return quant.reshape(val.shape)
