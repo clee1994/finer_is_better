@@ -63,12 +63,39 @@ This section is automatically updated by the evaluation script after each run. D
 
 <!-- RESULTS_START -->
 
-| Model          |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |
-|:---------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|
-| Llama 3.1 8B   |       6.24 |   1.74 |   1.43 |    1.29 |    1.22 |    1.23 |     1.35 |     1.53 |
-| Granite 3.3 8B |       4.72 |   1.15 |   1.01 |    0.93 |    0.93 |    1.01 |     1.2  |     1.56 |
-| Qwen 2.5 14B   |       5.36 |   1.39 |   1.22 |    1.12 |    1.16 |    1.26 |     1.49 |     2.06 |
-| DeepSeek 7B    |      12.28 |   2.68 |   2.11 |    1.78 |    1.62 |    1.65 |     1.85 |     2.17 |
+|                       |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |
+|:----------------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|
+| Llama 3.1 8B          |     nan    |   0.91 |   0.63 |  nan    |    0.79 |  nan    |   nan    |     1.15 |
+| Granite 3.3 8B        |     nan    | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
+| Qwen 2.5 14B          |     nan    | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
+| DeepSeek 7B           |     nan    | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
+| Llama_nvfp4_no_pz     |     nan    |   0.91 |   0.75 |    0.72 |    0.79 |    0.87 |     0.98 |   nan    |
+| Llama_nvfp4_pz        |     nan    |   0.79 |   0.73 |    0.73 |    0.77 |    0.88 |     0.99 |   nan    |
+| Llama_4over6_no_pz    |     nan    |   0.46 |   0.52 |    0.63 |    0.76 |    0.84 |     0.98 |   nan    |
+| Llama_4over6_pz       |     nan    |   0.34 |   0.4  |    0.51 |    0.62 |    0.75 |     0.88 |     1.08 |
+| Llama_ue5m3_pz        |     nan    |   0.19 |   0.32 |    0.47 |    0.58 |    0.73 |     0.88 |     1.09 |
+| Llama_nvfp4           |       6.33 | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
+| Llama_ue5m3_no_pz     |     nan    |   0.28 |   0.39 |    0.53 |    0.62 |    0.74 |     0.86 |     1.09 |
+| Llama_e4m3_no_pz      |     nan    |   0.81 |   0.65 |    0.62 |    0.67 |    0.75 |     0.88 |     1.07 |
+| Llama_e4m3_pz         |     nan    |   0.68 |   0.63 |    0.62 |    0.66 |    0.76 |     0.89 |     1.07 |
+| Llama_4over6_no_pz    |     nan    |   0.36 |   0.41 |    0.51 |    0.61 |    0.75 |     0.88 |     1.08 |
+| Granite_e4m3_pz       |     nan    |   0.96 |   0.88 |    0.83 |    0.87 |    0.96 |     1.13 |     1.5  |
+| Granite_e4m3_no_pz    |     nan    |   1.06 |   0.89 |    0.83 |    0.86 |    0.96 |     1.13 |     1.5  |
+| Granite_4over6_no_pz  |     nan    |   0.62 |   0.67 |    0.75 |    0.88 |    0.97 |     1.13 |     1.48 |
+| Granite_4over6_pz     |     nan    |   0.62 |   0.67 |    0.75 |    0.89 |    0.97 |     1.13 |     1.48 |
+| Granite_ue5m3_no_pz   |     nan    |   0.16 |   0.23 |    0.3  |    0.38 |    0.57 |     0.79 |     1.19 |
+| Granite_ue5m3_pz      |     nan    |   0.11 |   0.17 |    0.25 |    0.36 |    0.57 |     0.77 |     1.23 |
+| DeepSeek_e4m3_pz      |     nan    |   0.4  |   0.52 |    0.66 |    0.82 |    0.98 |     1.19 |     1.51 |
+| DeepSeek_e4m3_no_pz   |     nan    |   0.4  |   0.52 |    0.65 |    0.82 |    0.99 |     1.19 |     1.51 |
+| DeepSeek_4over6_no_pz |     nan    |   0.25 |   0.38 |    0.54 |    0.73 |    0.93 |     1.19 |     1.49 |
+| DeepSeek_4over6_pz    |     nan    |   0.25 |   0.39 |    0.54 |    0.74 |    0.94 |     1.19 |     1.49 |
+| DeepSeek_ue5m3_no_pz  |     nan    |   0.32 |   0.48 |    0.64 |    0.82 |    0.97 |     1.22 |     1.53 |
+| DeepSeek_ue5m3_pz     |     nan    |   0.24 |   0.36 |    0.54 |    0.72 |    0.92 |     1.2  |     1.53 |
+| Qwen_e4m3_no_pz       |     nan    |   0.47 |   0.49 |    0.56 |    0.65 |    0.81 |     1.04 |     1.49 |
+| Llama 3.1 8B          |     nan    |   1.74 |   1.43 |    1.29 |    1.22 |    1.23 |     1.35 |     1.53 |
+| Granite 3.3 8B        |     nan    | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
+| Qwen 2.5 14B          |     nan    | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
+| DeepSeek 7B           |     nan    | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
 
 ### Graphs
 <table>
@@ -83,6 +110,89 @@ This section is automatically updated by the evaluation script after each run. D
 <p align="center">Qwen 2.5 14B Gap</p></td>
     <td><img src="plots/gap_deepseek_7b.png" alt="DeepSeek 7B Gap" width="400">
 <p align="center">DeepSeek 7B Gap</p></td>
+  </tr>
+  <tr>
+    <td><img src="plots/gap_llama_nvfp4_no_pz.png" alt="Llama_nvfp4_no_pz Gap" width="400">
+<p align="center">Llama_nvfp4_no_pz Gap</p></td>
+    <td><img src="plots/gap_llama_nvfp4_pz.png" alt="Llama_nvfp4_pz Gap" width="400">
+<p align="center">Llama_nvfp4_pz Gap</p></td>
+  </tr>
+  <tr>
+    <td><img src="plots/gap_llama_4over6_no_pz.png" alt="Llama_4over6_no_pz Gap" width="400">
+<p align="center">Llama_4over6_no_pz Gap</p></td>
+    <td><img src="plots/gap_llama_4over6_pz.png" alt="Llama_4over6_pz Gap" width="400">
+<p align="center">Llama_4over6_pz Gap</p></td>
+  </tr>
+  <tr>
+    <td><img src="plots/gap_llama_ue5m3_pz.png" alt="Llama_ue5m3_pz Gap" width="400">
+<p align="center">Llama_ue5m3_pz Gap</p></td>
+    <td><img src="plots/gap_llama_nvfp4.png" alt="Llama_nvfp4 Gap" width="400">
+<p align="center">Llama_nvfp4 Gap</p></td>
+  </tr>
+  <tr>
+    <td><img src="plots/gap_llama_ue5m3_no_pz.png" alt="Llama_ue5m3_no_pz Gap" width="400">
+<p align="center">Llama_ue5m3_no_pz Gap</p></td>
+    <td><img src="plots/gap_llama_e4m3_no_pz.png" alt="Llama_e4m3_no_pz Gap" width="400">
+<p align="center">Llama_e4m3_no_pz Gap</p></td>
+  </tr>
+  <tr>
+    <td><img src="plots/gap_llama_e4m3_pz.png" alt="Llama_e4m3_pz Gap" width="400">
+<p align="center">Llama_e4m3_pz Gap</p></td>
+    <td><img src="plots/gap_llama_4over6_no_pz.png" alt="Llama_4over6_no_pz Gap" width="400">
+<p align="center">Llama_4over6_no_pz Gap</p></td>
+  </tr>
+  <tr>
+    <td><img src="plots/gap_granite_e4m3_pz.png" alt="Granite_e4m3_pz Gap" width="400">
+<p align="center">Granite_e4m3_pz Gap</p></td>
+    <td><img src="plots/gap_granite_e4m3_no_pz.png" alt="Granite_e4m3_no_pz Gap" width="400">
+<p align="center">Granite_e4m3_no_pz Gap</p></td>
+  </tr>
+  <tr>
+    <td><img src="plots/gap_granite_4over6_no_pz.png" alt="Granite_4over6_no_pz Gap" width="400">
+<p align="center">Granite_4over6_no_pz Gap</p></td>
+    <td><img src="plots/gap_granite_4over6_pz.png" alt="Granite_4over6_pz Gap" width="400">
+<p align="center">Granite_4over6_pz Gap</p></td>
+  </tr>
+  <tr>
+    <td><img src="plots/gap_granite_ue5m3_no_pz.png" alt="Granite_ue5m3_no_pz Gap" width="400">
+<p align="center">Granite_ue5m3_no_pz Gap</p></td>
+    <td><img src="plots/gap_granite_ue5m3_pz.png" alt="Granite_ue5m3_pz Gap" width="400">
+<p align="center">Granite_ue5m3_pz Gap</p></td>
+  </tr>
+  <tr>
+    <td><img src="plots/gap_deepseek_e4m3_pz.png" alt="DeepSeek_e4m3_pz Gap" width="400">
+<p align="center">DeepSeek_e4m3_pz Gap</p></td>
+    <td><img src="plots/gap_deepseek_e4m3_no_pz.png" alt="DeepSeek_e4m3_no_pz Gap" width="400">
+<p align="center">DeepSeek_e4m3_no_pz Gap</p></td>
+  </tr>
+  <tr>
+    <td><img src="plots/gap_deepseek_4over6_no_pz.png" alt="DeepSeek_4over6_no_pz Gap" width="400">
+<p align="center">DeepSeek_4over6_no_pz Gap</p></td>
+    <td><img src="plots/gap_deepseek_4over6_pz.png" alt="DeepSeek_4over6_pz Gap" width="400">
+<p align="center">DeepSeek_4over6_pz Gap</p></td>
+  </tr>
+  <tr>
+    <td><img src="plots/gap_deepseek_ue5m3_no_pz.png" alt="DeepSeek_ue5m3_no_pz Gap" width="400">
+<p align="center">DeepSeek_ue5m3_no_pz Gap</p></td>
+    <td><img src="plots/gap_deepseek_ue5m3_pz.png" alt="DeepSeek_ue5m3_pz Gap" width="400">
+<p align="center">DeepSeek_ue5m3_pz Gap</p></td>
+  </tr>
+  <tr>
+    <td><img src="plots/gap_qwen_e4m3_no_pz.png" alt="Qwen_e4m3_no_pz Gap" width="400">
+<p align="center">Qwen_e4m3_no_pz Gap</p></td>
+    <td><img src="plots/gap_llama_3.1_8b.png" alt="Llama 3.1 8B Gap" width="400">
+<p align="center">Llama 3.1 8B Gap</p></td>
+  </tr>
+  <tr>
+    <td><img src="plots/gap_granite_3.3_8b.png" alt="Granite 3.3 8B Gap" width="400">
+<p align="center">Granite 3.3 8B Gap</p></td>
+    <td><img src="plots/gap_qwen_2.5_14b.png" alt="Qwen 2.5 14B Gap" width="400">
+<p align="center">Qwen 2.5 14B Gap</p></td>
+  </tr>
+  <tr>
+    <td><img src="plots/gap_deepseek_7b.png" alt="DeepSeek 7B Gap" width="400">
+<p align="center">DeepSeek 7B Gap</p></td>
+    <td></td>
   </tr>
 </table>
 
