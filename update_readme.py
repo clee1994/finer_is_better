@@ -32,7 +32,7 @@ def update_readme():
         "4over6_no_pz": "e4m3 + 4o6",
         "4over6_pz": "e4m3 + 4o6 + PZ",
         "ue5m3_no_pz": "ue5m3",
-        "ue5m3_pz": "ue5m3 + PZ",
+        "ue5m3_pz": "ue5m3 + 4o6 + PZ",
         "4over6_pz_ue5m3": "ue5m3 + 4o6 + PZ"
     }
     
