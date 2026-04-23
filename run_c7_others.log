@@ -1,322 +1,0 @@
-`torch_dtype` is deprecated! Use `dtype` instead!
-Evaluating meta-llama/Llama-3.1-8B with block size 4, prevent_zero=True, four_over_six=True, use_ue5m3=True, num_steps=None
-Loading weights:   0%|          | 0/291 [00:00<?, ?it/s]Loading weights: 100%|██████████| 291/291 [00:00<00:00, 4805.95it/s]
-Token indices sequence length is longer than the specified maximum sequence length for this model (289077 > 131072). Running this sequence through the model will result in indexing errors
-Identified head: lm_head
-Replacing layer: model.layers.0.mlp.gate_proj
-Replacing layer: model.layers.0.mlp.up_proj
-Replacing layer: model.layers.0.mlp.down_proj
-Replacing layer: model.layers.1.mlp.gate_proj
-Replacing layer: model.layers.1.mlp.up_proj
-Replacing layer: model.layers.1.mlp.down_proj
-Replacing layer: model.layers.2.mlp.gate_proj
-Replacing layer: model.layers.2.mlp.up_proj
-Replacing layer: model.layers.2.mlp.down_proj
-Replacing layer: model.layers.3.mlp.gate_proj
-Replacing layer: model.layers.3.mlp.up_proj
-Replacing layer: model.layers.3.mlp.down_proj
-Replacing layer: model.layers.4.mlp.gate_proj
-Replacing layer: model.layers.4.mlp.up_proj
-Replacing layer: model.layers.4.mlp.down_proj
-Replacing layer: model.layers.5.mlp.gate_proj
-Replacing layer: model.layers.5.mlp.up_proj
-Replacing layer: model.layers.5.mlp.down_proj
-Replacing layer: model.layers.6.mlp.gate_proj
-Replacing layer: model.layers.6.mlp.up_proj
-Replacing layer: model.layers.6.mlp.down_proj
-Replacing layer: model.layers.7.mlp.gate_proj
-Replacing layer: model.layers.7.mlp.up_proj
-Replacing layer: model.layers.7.mlp.down_proj
-Replacing layer: model.layers.8.mlp.gate_proj
-Replacing layer: model.layers.8.mlp.up_proj
-Replacing layer: model.layers.8.mlp.down_proj
-Replacing layer: model.layers.9.mlp.gate_proj
-Replacing layer: model.layers.9.mlp.up_proj
-Replacing layer: model.layers.9.mlp.down_proj
-Replacing layer: model.layers.10.mlp.gate_proj
-Replacing layer: model.layers.10.mlp.up_proj
-Replacing layer: model.layers.10.mlp.down_proj
-Replacing layer: model.layers.11.mlp.gate_proj
-Replacing layer: model.layers.11.mlp.up_proj
-Replacing layer: model.layers.11.mlp.down_proj
-Replacing layer: model.layers.12.mlp.gate_proj
-Replacing layer: model.layers.12.mlp.up_proj
-Replacing layer: model.layers.12.mlp.down_proj
-Replacing layer: model.layers.13.mlp.gate_proj
-Replacing layer: model.layers.13.mlp.up_proj
-Replacing layer: model.layers.13.mlp.down_proj
-Replacing layer: model.layers.14.mlp.gate_proj
-Replacing layer: model.layers.14.mlp.up_proj
-Replacing layer: model.layers.14.mlp.down_proj
-Replacing layer: model.layers.15.mlp.gate_proj
-Replacing layer: model.layers.15.mlp.up_proj
-Replacing layer: model.layers.15.mlp.down_proj
-Replacing layer: model.layers.16.mlp.gate_proj
-Replacing layer: model.layers.16.mlp.up_proj
-Replacing layer: model.layers.16.mlp.down_proj
-Replacing layer: model.layers.17.mlp.gate_proj
-Replacing layer: model.layers.17.mlp.up_proj
-Replacing layer: model.layers.17.mlp.down_proj
-Replacing layer: model.layers.18.mlp.gate_proj
-Replacing layer: model.layers.18.mlp.up_proj
-Replacing layer: model.layers.18.mlp.down_proj
-Replacing layer: model.layers.19.mlp.gate_proj
-Replacing layer: model.layers.19.mlp.up_proj
-Replacing layer: model.layers.19.mlp.down_proj
-Replacing layer: model.layers.20.mlp.gate_proj
-Replacing layer: model.layers.20.mlp.up_proj
-Replacing layer: model.layers.20.mlp.down_proj
-Replacing layer: model.layers.21.mlp.gate_proj
-Replacing layer: model.layers.21.mlp.up_proj
-Replacing layer: model.layers.21.mlp.down_proj
-Replacing layer: model.layers.22.mlp.gate_proj
-Replacing layer: model.layers.22.mlp.up_proj
-Replacing layer: model.layers.22.mlp.down_proj
-Replacing layer: model.layers.23.mlp.gate_proj
-Replacing layer: model.layers.23.mlp.up_proj
-Replacing layer: model.layers.23.mlp.down_proj
-Replacing layer: model.layers.24.mlp.gate_proj
-Replacing layer: model.layers.24.mlp.up_proj
-Replacing layer: model.layers.24.mlp.down_proj
-Replacing layer: model.layers.25.mlp.gate_proj
-Replacing layer: model.layers.25.mlp.up_proj
-Replacing layer: model.layers.25.mlp.down_proj
-Replacing layer: model.layers.26.mlp.gate_proj
-Replacing layer: model.layers.26.mlp.up_proj
-Replacing layer: model.layers.26.mlp.down_proj
-Replacing layer: model.layers.27.mlp.gate_proj
-Replacing layer: model.layers.27.mlp.up_proj
-Replacing layer: model.layers.27.mlp.down_proj
-Replacing layer: model.layers.28.mlp.gate_proj
-Replacing layer: model.layers.28.mlp.up_proj
-Replacing layer: model.layers.28.mlp.down_proj
-Replacing layer: model.layers.29.mlp.gate_proj
-Replacing layer: model.layers.29.mlp.up_proj
-Replacing layer: model.layers.29.mlp.down_proj
-Replacing layer: model.layers.30.mlp.gate_proj
-Replacing layer: model.layers.30.mlp.up_proj
-Replacing layer: model.layers.30.mlp.down_proj
-Replacing layer: model.layers.31.mlp.gate_proj
-Replacing layer: model.layers.31.mlp.up_proj
-Replacing layer: model.layers.31.mlp.down_proj
-  0%|          | 0/142 [00:00<?, ?it/s]  1%|          | 1/142 [00:02<05:35,  2.38s/it]  1%|▏         | 2/142 [00:04<04:50,  2.08s/it]  2%|▏         | 3/142 [00:06<04:35,  1.99s/it]  3%|▎         | 4/142 [00:07<04:28,  1.94s/it]  4%|▎         | 5/142 [00:09<04:23,  1.92s/it]  4%|▍         | 6/142 [00:11<04:19,  1.91s/it]  5%|▍         | 7/142 [00:13<04:16,  1.90s/it]  6%|▌         | 8/142 [00:15<04:13,  1.89s/it]  6%|▋         | 9/142 [00:17<04:11,  1.89s/it]  7%|▋         | 10/142 [00:19<04:08,  1.88s/it]  8%|▊         | 11/142 [00:21<04:06,  1.88s/it]  8%|▊         | 12/142 [00:23<04:04,  1.88s/it]  9%|▉         | 13/142 [00:24<04:02,  1.88s/it] 10%|▉         | 14/142 [00:26<04:00,  1.88s/it] 11%|█         | 15/142 [00:28<03:58,  1.88s/it] 11%|█▏        | 16/142 [00:30<03:56,  1.88s/it] 12%|█▏        | 17/142 [00:32<03:54,  1.88s/it] 13%|█▎        | 18/142 [00:34<03:53,  1.88s/it] 13%|█▎        | 19/142 [00:36<03:51,  1.88s/it] 14%|█▍        | 20/142 [00:38<03:49,  1.88s/it] 15%|█▍        | 21/142 [00:39<03:47,  1.88s/it] 15%|█▌        | 22/142 [00:41<03:45,  1.88s/it] 16%|█▌        | 23/142 [00:43<03:43,  1.88s/it] 17%|█▋        | 24/142 [00:45<03:41,  1.88s/it] 18%|█▊        | 25/142 [00:47<03:39,  1.88s/it] 18%|█▊        | 26/142 [00:49<03:37,  1.88s/it] 19%|█▉        | 27/142 [00:51<03:36,  1.88s/it] 20%|█▉        | 28/142 [00:53<03:34,  1.88s/it] 20%|██        | 29/142 [00:54<03:32,  1.88s/it] 21%|██        | 30/142 [00:56<03:30,  1.88s/it] 22%|██▏       | 31/142 [00:58<03:28,  1.88s/it] 23%|██▎       | 32/142 [01:00<03:26,  1.88s/it] 23%|██▎       | 33/142 [01:02<03:24,  1.88s/it] 24%|██▍       | 34/142 [01:04<03:22,  1.88s/it] 25%|██▍       | 35/142 [01:06<03:21,  1.88s/it] 25%|██▌       | 36/142 [01:08<03:19,  1.88s/it] 26%|██▌       | 37/142 [01:09<03:17,  1.88s/it] 27%|██▋       | 38/142 [01:11<03:15,  1.88s/it] 27%|██▋       | 39/142 [01:13<03:13,  1.88s/it] 28%|██▊       | 40/142 [01:15<03:11,  1.88s/it] 29%|██▉       | 41/142 [01:17<03:09,  1.88s/it] 30%|██▉       | 42/142 [01:19<03:07,  1.88s/it] 30%|███       | 43/142 [01:21<03:05,  1.88s/it] 31%|███       | 44/142 [01:23<03:04,  1.88s/it] 32%|███▏      | 45/142 [01:25<03:02,  1.88s/it] 32%|███▏      | 46/142 [01:26<03:00,  1.88s/it] 33%|███▎      | 47/142 [01:28<02:58,  1.88s/it] 34%|███▍      | 48/142 [01:30<02:56,  1.88s/it] 35%|███▍      | 49/142 [01:32<02:54,  1.88s/it] 35%|███▌      | 50/142 [01:34<02:52,  1.88s/it] 36%|███▌      | 51/142 [01:36<02:50,  1.88s/it] 37%|███▋      | 52/142 [01:38<02:49,  1.88s/it] 37%|███▋      | 53/142 [01:40<02:47,  1.88s/it] 38%|███▊      | 54/142 [01:41<02:45,  1.88s/it] 39%|███▊      | 55/142 [01:43<02:43,  1.88s/it] 39%|███▉      | 56/142 [01:45<02:41,  1.88s/it] 40%|████      | 57/142 [01:47<02:39,  1.88s/it] 41%|████      | 58/142 [01:49<02:37,  1.88s/it] 42%|████▏     | 59/142 [01:51<02:35,  1.88s/it] 42%|████▏     | 60/142 [01:53<02:34,  1.88s/it] 43%|████▎     | 61/142 [01:55<02:32,  1.88s/it] 44%|████▎     | 62/142 [01:56<02:30,  1.88s/it] 44%|████▍     | 63/142 [01:58<02:28,  1.88s/it] 45%|████▌     | 64/142 [02:00<02:26,  1.88s/it] 46%|████▌     | 65/142 [02:02<02:24,  1.88s/it] 46%|████▋     | 66/142 [02:04<02:22,  1.88s/it] 47%|████▋     | 67/142 [02:06<02:20,  1.88s/it] 48%|████▊     | 68/142 [02:08<02:19,  1.88s/it] 49%|████▊     | 69/142 [02:10<02:17,  1.88s/it] 49%|████▉     | 70/142 [02:11<02:15,  1.88s/it] 50%|█████     | 71/142 [02:13<02:13,  1.88s/it] 51%|█████     | 72/142 [02:15<02:11,  1.88s/it] 51%|█████▏    | 73/142 [02:17<02:09,  1.88s/it] 52%|█████▏    | 74/142 [02:19<02:07,  1.88s/it] 53%|█████▎    | 75/142 [02:21<02:05,  1.88s/it] 54%|█████▎    | 76/142 [02:23<02:03,  1.88s/it] 54%|█████▍    | 77/142 [02:25<02:02,  1.88s/it] 55%|█████▍    | 78/142 [02:27<02:00,  1.88s/it] 56%|█████▌    | 79/142 [02:28<01:58,  1.88s/it] 56%|█████▋    | 80/142 [02:30<01:56,  1.88s/it] 57%|█████▋    | 81/142 [02:32<01:54,  1.88s/it] 58%|█████▊    | 82/142 [02:34<01:52,  1.88s/it] 58%|█████▊    | 83/142 [02:36<01:50,  1.88s/it] 59%|█████▉    | 84/142 [02:38<01:48,  1.88s/it] 60%|█████▉    | 85/142 [02:40<01:47,  1.88s/it] 61%|██████    | 86/142 [02:42<01:45,  1.88s/it] 61%|██████▏   | 87/142 [02:43<01:43,  1.88s/it] 62%|██████▏   | 88/142 [02:45<01:41,  1.88s/it] 63%|██████▎   | 89/142 [02:47<01:39,  1.88s/it] 63%|██████▎   | 90/142 [02:49<01:37,  1.88s/it] 64%|██████▍   | 91/142 [02:51<01:35,  1.88s/it] 65%|██████▍   | 92/142 [02:53<01:33,  1.88s/it] 65%|██████▌   | 93/142 [02:55<01:32,  1.88s/it] 66%|██████▌   | 94/142 [02:57<01:30,  1.88s/it] 67%|██████▋   | 95/142 [02:58<01:28,  1.88s/it] 68%|██████▊   | 96/142 [03:00<01:26,  1.88s/it] 68%|██████▊   | 97/142 [03:02<01:24,  1.88s/it] 69%|██████▉   | 98/142 [03:04<01:22,  1.88s/it] 70%|██████▉   | 99/142 [03:06<01:20,  1.88s/it] 70%|███████   | 100/142 [03:08<01:18,  1.88s/it] 71%|███████   | 101/142 [03:10<01:17,  1.88s/it] 72%|███████▏  | 102/142 [03:12<01:15,  1.88s/it] 73%|███████▎  | 103/142 [03:13<01:13,  1.88s/it] 73%|███████▎  | 104/142 [03:15<01:11,  1.88s/it] 74%|███████▍  | 105/142 [03:17<01:09,  1.88s/it] 75%|███████▍  | 106/142 [03:19<01:07,  1.88s/it] 75%|███████▌  | 107/142 [03:21<01:05,  1.88s/it] 76%|███████▌  | 108/142 [03:23<01:03,  1.88s/it] 77%|███████▋  | 109/142 [03:25<01:02,  1.88s/it] 77%|███████▋  | 110/142 [03:27<01:00,  1.89s/it] 78%|███████▊  | 111/142 [03:29<00:58,  1.89s/it] 79%|███████▉  | 112/142 [03:30<00:56,  1.90s/it] 80%|███████▉  | 113/142 [03:32<00:55,  1.90s/it] 80%|████████  | 114/142 [03:34<00:53,  1.90s/it] 81%|████████  | 115/142 [03:36<00:51,  1.89s/it] 82%|████████▏ | 116/142 [03:38<00:52,  2.00s/it] 82%|████████▏ | 117/142 [03:40<00:49,  1.97s/it] 83%|████████▎ | 118/142 [03:42<00:46,  1.95s/it] 84%|████████▍ | 119/142 [03:44<00:44,  1.93s/it] 85%|████████▍ | 120/142 [03:46<00:42,  1.93s/it] 85%|████████▌ | 121/142 [03:48<00:41,  1.98s/it] 86%|████████▌ | 122/142 [03:50<00:38,  1.95s/it] 87%|████████▋ | 123/142 [03:52<00:36,  1.93s/it] 87%|████████▋ | 124/142 [03:54<00:34,  1.91s/it] 88%|████████▊ | 125/142 [03:56<00:32,  1.90s/it] 89%|████████▊ | 126/142 [03:58<00:30,  1.90s/it] 89%|████████▉ | 127/142 [03:59<00:28,  1.89s/it] 90%|█████████ | 128/142 [04:01<00:26,  1.89s/it] 91%|█████████ | 129/142 [04:03<00:24,  1.89s/it] 92%|█████████▏| 130/142 [04:05<00:22,  1.88s/it] 92%|█████████▏| 131/142 [04:07<00:20,  1.88s/it] 93%|█████████▎| 132/142 [04:09<00:18,  1.88s/it] 94%|█████████▎| 133/142 [04:11<00:16,  1.88s/it] 94%|█████████▍| 134/142 [04:13<00:15,  1.88s/it] 95%|█████████▌| 135/142 [04:14<00:13,  1.88s/it] 96%|█████████▌| 136/142 [04:16<00:11,  1.88s/it] 96%|█████████▋| 137/142 [04:18<00:09,  1.88s/it] 97%|█████████▋| 138/142 [04:20<00:07,  1.88s/it] 98%|█████████▊| 139/142 [04:22<00:05,  1.88s/it] 99%|█████████▊| 140/142 [04:24<00:03,  1.88s/it] 99%|█████████▉| 141/142 [04:26<00:01,  1.88s/it]100%|██████████| 142/142 [04:27<00:00,  1.77s/it]100%|██████████| 142/142 [04:27<00:00,  1.89s/it]
-[main 292ab63] Update results for Llama_ue5m3_pz BS=4
- 1 file changed, 2 insertions(+)
- create mode 100644 results_llama_llama_c7.csv
-Already up to date.
-To https://github.com/clee1994/finer_is_better
-   200b8a3..292ab63  main -> main
-Perplexity: 6.438798904418945
-Evaluating meta-llama/Llama-3.1-8B with block size 8, prevent_zero=True, four_over_six=True, use_ue5m3=True, num_steps=None
-Loading weights:   0%|          | 0/291 [00:00<?, ?it/s]Loading weights: 100%|██████████| 291/291 [00:00<00:00, 4178.68it/s]
-Token indices sequence length is longer than the specified maximum sequence length for this model (289077 > 131072). Running this sequence through the model will result in indexing errors
-Identified head: lm_head
-Replacing layer: model.layers.0.mlp.gate_proj
-Replacing layer: model.layers.0.mlp.up_proj
-Replacing layer: model.layers.0.mlp.down_proj
-Replacing layer: model.layers.1.mlp.gate_proj
-Replacing layer: model.layers.1.mlp.up_proj
-Replacing layer: model.layers.1.mlp.down_proj
-Replacing layer: model.layers.2.mlp.gate_proj
-Replacing layer: model.layers.2.mlp.up_proj
-Replacing layer: model.layers.2.mlp.down_proj
-Replacing layer: model.layers.3.mlp.gate_proj
-Replacing layer: model.layers.3.mlp.up_proj
-Replacing layer: model.layers.3.mlp.down_proj
-Replacing layer: model.layers.4.mlp.gate_proj
-Replacing layer: model.layers.4.mlp.up_proj
-Replacing layer: model.layers.4.mlp.down_proj
-Replacing layer: model.layers.5.mlp.gate_proj
-Replacing layer: model.layers.5.mlp.up_proj
-Replacing layer: model.layers.5.mlp.down_proj
-Replacing layer: model.layers.6.mlp.gate_proj
-Replacing layer: model.layers.6.mlp.up_proj
-Replacing layer: model.layers.6.mlp.down_proj
-Replacing layer: model.layers.7.mlp.gate_proj
-Replacing layer: model.layers.7.mlp.up_proj
-Replacing layer: model.layers.7.mlp.down_proj
-Replacing layer: model.layers.8.mlp.gate_proj
-Replacing layer: model.layers.8.mlp.up_proj
-Replacing layer: model.layers.8.mlp.down_proj
-Replacing layer: model.layers.9.mlp.gate_proj
-Replacing layer: model.layers.9.mlp.up_proj
-Replacing layer: model.layers.9.mlp.down_proj
-Replacing layer: model.layers.10.mlp.gate_proj
-Replacing layer: model.layers.10.mlp.up_proj
-Replacing layer: model.layers.10.mlp.down_proj
-Replacing layer: model.layers.11.mlp.gate_proj
-Replacing layer: model.layers.11.mlp.up_proj
-Replacing layer: model.layers.11.mlp.down_proj
-Replacing layer: model.layers.12.mlp.gate_proj
-Replacing layer: model.layers.12.mlp.up_proj
-Replacing layer: model.layers.12.mlp.down_proj
-Replacing layer: model.layers.13.mlp.gate_proj
-Replacing layer: model.layers.13.mlp.up_proj
-Replacing layer: model.layers.13.mlp.down_proj
-Replacing layer: model.layers.14.mlp.gate_proj
-Replacing layer: model.layers.14.mlp.up_proj
-Replacing layer: model.layers.14.mlp.down_proj
-Replacing layer: model.layers.15.mlp.gate_proj
-Replacing layer: model.layers.15.mlp.up_proj
-Replacing layer: model.layers.15.mlp.down_proj
-Replacing layer: model.layers.16.mlp.gate_proj
-Replacing layer: model.layers.16.mlp.up_proj
-Replacing layer: model.layers.16.mlp.down_proj
-Replacing layer: model.layers.17.mlp.gate_proj
-Replacing layer: model.layers.17.mlp.up_proj
-Replacing layer: model.layers.17.mlp.down_proj
-Replacing layer: model.layers.18.mlp.gate_proj
-Replacing layer: model.layers.18.mlp.up_proj
-Replacing layer: model.layers.18.mlp.down_proj
-Replacing layer: model.layers.19.mlp.gate_proj
-Replacing layer: model.layers.19.mlp.up_proj
-Replacing layer: model.layers.19.mlp.down_proj
-Replacing layer: model.layers.20.mlp.gate_proj
-Replacing layer: model.layers.20.mlp.up_proj
-Replacing layer: model.layers.20.mlp.down_proj
-Replacing layer: model.layers.21.mlp.gate_proj
-Replacing layer: model.layers.21.mlp.up_proj
-Replacing layer: model.layers.21.mlp.down_proj
-Replacing layer: model.layers.22.mlp.gate_proj
-Replacing layer: model.layers.22.mlp.up_proj
-Replacing layer: model.layers.22.mlp.down_proj
-Replacing layer: model.layers.23.mlp.gate_proj
-Replacing layer: model.layers.23.mlp.up_proj
-Replacing layer: model.layers.23.mlp.down_proj
-Replacing layer: model.layers.24.mlp.gate_proj
-Replacing layer: model.layers.24.mlp.up_proj
-Replacing layer: model.layers.24.mlp.down_proj
-Replacing layer: model.layers.25.mlp.gate_proj
-Replacing layer: model.layers.25.mlp.up_proj
-Replacing layer: model.layers.25.mlp.down_proj
-Replacing layer: model.layers.26.mlp.gate_proj
-Replacing layer: model.layers.26.mlp.up_proj
-Replacing layer: model.layers.26.mlp.down_proj
-Replacing layer: model.layers.27.mlp.gate_proj
-Replacing layer: model.layers.27.mlp.up_proj
-Replacing layer: model.layers.27.mlp.down_proj
-Replacing layer: model.layers.28.mlp.gate_proj
-Replacing layer: model.layers.28.mlp.up_proj
-Replacing layer: model.layers.28.mlp.down_proj
-Replacing layer: model.layers.29.mlp.gate_proj
-Replacing layer: model.layers.29.mlp.up_proj
-Replacing layer: model.layers.29.mlp.down_proj
-Replacing layer: model.layers.30.mlp.gate_proj
-Replacing layer: model.layers.30.mlp.up_proj
-Replacing layer: model.layers.30.mlp.down_proj
-Replacing layer: model.layers.31.mlp.gate_proj
-Replacing layer: model.layers.31.mlp.up_proj
-Replacing layer: model.layers.31.mlp.down_proj
-  0%|          | 0/142 [00:00<?, ?it/s]  1%|          | 1/142 [00:01<04:11,  1.78s/it]  1%|▏         | 2/142 [00:03<04:08,  1.78s/it]  2%|▏         | 3/142 [00:05<04:06,  1.77s/it]  3%|▎         | 4/142 [00:07<04:04,  1.77s/it]  4%|▎         | 5/142 [00:08<04:02,  1.77s/it]  4%|▍         | 6/142 [00:10<04:00,  1.77s/it]  5%|▍         | 7/142 [00:12<03:59,  1.77s/it]  6%|▌         | 8/142 [00:14<03:57,  1.77s/it]  6%|▋         | 9/142 [00:15<03:55,  1.77s/it]  7%|▋         | 10/142 [00:17<03:53,  1.77s/it]  8%|▊         | 11/142 [00:19<03:51,  1.77s/it]  8%|▊         | 12/142 [00:21<03:50,  1.77s/it]  9%|▉         | 13/142 [00:23<03:48,  1.77s/it] 10%|▉         | 14/142 [00:24<03:46,  1.77s/it] 11%|█         | 15/142 [00:26<03:44,  1.77s/it] 11%|█▏        | 16/142 [00:28<03:43,  1.77s/it] 12%|█▏        | 17/142 [00:30<03:41,  1.77s/it] 13%|█▎        | 18/142 [00:31<03:39,  1.77s/it] 13%|█▎        | 19/142 [00:33<03:37,  1.77s/it] 14%|█▍        | 20/142 [00:35<03:35,  1.77s/it] 15%|█▍        | 21/142 [00:37<03:34,  1.77s/it] 15%|█▌        | 22/142 [00:38<03:32,  1.77s/it] 16%|█▌        | 23/142 [00:40<03:30,  1.77s/it] 17%|█▋        | 24/142 [00:42<03:28,  1.77s/it] 18%|█▊        | 25/142 [00:44<03:27,  1.77s/it] 18%|█▊        | 26/142 [00:46<03:25,  1.77s/it] 19%|█▉        | 27/142 [00:47<03:23,  1.77s/it] 20%|█▉        | 28/142 [00:49<03:21,  1.77s/it] 20%|██        | 29/142 [00:51<03:20,  1.77s/it] 21%|██        | 30/142 [00:53<03:18,  1.77s/it] 22%|██▏       | 31/142 [00:54<03:16,  1.77s/it] 23%|██▎       | 32/142 [00:56<03:14,  1.77s/it] 23%|██▎       | 33/142 [00:58<03:13,  1.77s/it] 24%|██▍       | 34/142 [01:00<03:11,  1.77s/it] 25%|██▍       | 35/142 [01:01<03:09,  1.77s/it] 25%|██▌       | 36/142 [01:03<03:07,  1.77s/it] 26%|██▌       | 37/142 [01:05<03:05,  1.77s/it] 27%|██▋       | 38/142 [01:07<03:04,  1.77s/it] 27%|██▋       | 39/142 [01:09<03:02,  1.77s/it] 28%|██▊       | 40/142 [01:10<03:00,  1.77s/it] 29%|██▉       | 41/142 [01:12<02:58,  1.77s/it] 30%|██▉       | 42/142 [01:14<02:57,  1.77s/it] 30%|███       | 43/142 [01:16<02:55,  1.77s/it] 31%|███       | 44/142 [01:17<02:53,  1.77s/it] 32%|███▏      | 45/142 [01:19<02:51,  1.77s/it] 32%|███▏      | 46/142 [01:21<02:49,  1.77s/it] 33%|███▎      | 47/142 [01:23<02:48,  1.77s/it] 34%|███▍      | 48/142 [01:24<02:46,  1.77s/it] 35%|███▍      | 49/142 [01:26<02:44,  1.77s/it] 35%|███▌      | 50/142 [01:28<02:42,  1.77s/it] 36%|███▌      | 51/142 [01:30<02:41,  1.77s/it] 37%|███▋      | 52/142 [01:32<02:39,  1.77s/it] 37%|███▋      | 53/142 [01:33<02:37,  1.77s/it] 38%|███▊      | 54/142 [01:35<02:35,  1.77s/it] 39%|███▊      | 55/142 [01:37<02:33,  1.77s/it] 39%|███▉      | 56/142 [01:39<02:32,  1.77s/it] 40%|████      | 57/142 [01:40<02:30,  1.77s/it] 41%|████      | 58/142 [01:42<02:28,  1.77s/it] 42%|████▏     | 59/142 [01:44<02:26,  1.77s/it] 42%|████▏     | 60/142 [01:46<02:25,  1.77s/it] 43%|████▎     | 61/142 [01:48<02:23,  1.77s/it] 44%|████▎     | 62/142 [01:49<02:21,  1.77s/it] 44%|████▍     | 63/142 [01:51<02:19,  1.77s/it] 45%|████▌     | 64/142 [01:53<02:18,  1.77s/it] 46%|████▌     | 65/142 [01:55<02:16,  1.77s/it] 46%|████▋     | 66/142 [01:56<02:14,  1.77s/it] 47%|████▋     | 67/142 [01:58<02:12,  1.77s/it] 48%|████▊     | 68/142 [02:00<02:11,  1.77s/it] 49%|████▊     | 69/142 [02:02<02:09,  1.77s/it] 49%|████▉     | 70/142 [02:03<02:07,  1.77s/it] 50%|█████     | 71/142 [02:05<02:05,  1.77s/it] 51%|█████     | 72/142 [02:07<02:03,  1.77s/it] 51%|█████▏    | 73/142 [02:09<02:02,  1.77s/it] 52%|█████▏    | 74/142 [02:11<02:00,  1.77s/it] 53%|█████▎    | 75/142 [02:12<01:58,  1.77s/it] 54%|█████▎    | 76/142 [02:14<01:56,  1.77s/it] 54%|█████▍    | 77/142 [02:16<01:55,  1.77s/it] 55%|█████▍    | 78/142 [02:18<01:53,  1.77s/it] 56%|█████▌    | 79/142 [02:19<01:51,  1.77s/it] 56%|█████▋    | 80/142 [02:21<01:49,  1.77s/it] 57%|█████▋    | 81/142 [02:23<01:47,  1.77s/it] 58%|█████▊    | 82/142 [02:25<01:46,  1.77s/it] 58%|█████▊    | 83/142 [02:26<01:44,  1.77s/it] 59%|█████▉    | 84/142 [02:28<01:42,  1.77s/it] 60%|█████▉    | 85/142 [02:30<01:40,  1.77s/it] 61%|██████    | 86/142 [02:32<01:39,  1.77s/it] 61%|██████▏   | 87/142 [02:34<01:37,  1.77s/it] 62%|██████▏   | 88/142 [02:35<01:35,  1.77s/it] 63%|██████▎   | 89/142 [02:37<01:33,  1.77s/it] 63%|██████▎   | 90/142 [02:39<01:32,  1.77s/it] 64%|██████▍   | 91/142 [02:41<01:30,  1.77s/it] 65%|██████▍   | 92/142 [02:42<01:28,  1.77s/it] 65%|██████▌   | 93/142 [02:44<01:26,  1.77s/it] 66%|██████▌   | 94/142 [02:46<01:25,  1.77s/it] 67%|██████▋   | 95/142 [02:48<01:23,  1.77s/it] 68%|██████▊   | 96/142 [02:49<01:21,  1.77s/it] 68%|██████▊   | 97/142 [02:51<01:19,  1.77s/it] 69%|██████▉   | 98/142 [02:53<01:17,  1.77s/it] 70%|██████▉   | 99/142 [02:55<01:17,  1.79s/it] 70%|███████   | 100/142 [02:57<01:15,  1.79s/it] 71%|███████   | 101/142 [02:58<01:13,  1.78s/it] 72%|███████▏  | 102/142 [03:00<01:11,  1.78s/it] 73%|███████▎  | 103/142 [03:02<01:09,  1.78s/it] 73%|███████▎  | 104/142 [03:04<01:07,  1.77s/it] 74%|███████▍  | 105/142 [03:05<01:05,  1.77s/it] 75%|███████▍  | 106/142 [03:07<01:03,  1.77s/it] 75%|███████▌  | 107/142 [03:09<01:02,  1.77s/it] 76%|███████▌  | 108/142 [03:11<01:00,  1.77s/it] 77%|███████▋  | 109/142 [03:13<00:58,  1.77s/it] 77%|███████▋  | 110/142 [03:14<00:56,  1.77s/it] 78%|███████▊  | 111/142 [03:16<00:54,  1.77s/it] 79%|███████▉  | 112/142 [03:18<00:53,  1.77s/it] 80%|███████▉  | 113/142 [03:20<00:51,  1.77s/it] 80%|████████  | 114/142 [03:21<00:49,  1.77s/it] 81%|████████  | 115/142 [03:23<00:47,  1.77s/it] 82%|████████▏ | 116/142 [03:25<00:46,  1.77s/it] 82%|████████▏ | 117/142 [03:27<00:44,  1.77s/it] 83%|████████▎ | 118/142 [03:29<00:42,  1.77s/it] 84%|████████▍ | 119/142 [03:30<00:40,  1.77s/it] 85%|████████▍ | 120/142 [03:32<00:38,  1.77s/it] 85%|████████▌ | 121/142 [03:34<00:37,  1.77s/it] 86%|████████▌ | 122/142 [03:36<00:35,  1.77s/it] 87%|████████▋ | 123/142 [03:37<00:33,  1.77s/it] 87%|████████▋ | 124/142 [03:39<00:31,  1.77s/it] 88%|████████▊ | 125/142 [03:41<00:30,  1.77s/it] 89%|████████▊ | 126/142 [03:43<00:28,  1.77s/it] 89%|████████▉ | 127/142 [03:44<00:26,  1.77s/it] 90%|█████████ | 128/142 [03:46<00:24,  1.77s/it] 91%|█████████ | 129/142 [03:48<00:23,  1.77s/it] 92%|█████████▏| 130/142 [03:50<00:21,  1.77s/it] 92%|█████████▏| 131/142 [03:52<00:19,  1.77s/it] 93%|█████████▎| 132/142 [03:53<00:17,  1.77s/it] 94%|█████████▎| 133/142 [03:55<00:15,  1.77s/it] 94%|█████████▍| 134/142 [03:57<00:14,  1.77s/it] 95%|█████████▌| 135/142 [03:59<00:12,  1.77s/it] 96%|█████████▌| 136/142 [04:00<00:10,  1.77s/it] 96%|█████████▋| 137/142 [04:02<00:08,  1.77s/it] 97%|█████████▋| 138/142 [04:04<00:07,  1.77s/it] 98%|█████████▊| 139/142 [04:06<00:05,  1.77s/it] 99%|█████████▊| 140/142 [04:07<00:03,  1.77s/it] 99%|█████████▉| 141/142 [04:09<00:01,  1.77s/it]100%|██████████| 142/142 [04:11<00:00,  1.66s/it]100%|██████████| 142/142 [04:11<00:00,  1.77s/it]
-[main 33acacb] Update results for Llama_ue5m3_pz BS=8
- 1 file changed, 1 insertion(+), 1 deletion(-)
-From https://github.com/clee1994/finer_is_better
-   292ab63..cf37d31  main       -> origin/main
-Merge made by the 'ort' strategy.
- results_qwen_vm1.csv | 2 +-
- results_qwen_vm2.csv | 2 +-
- 2 files changed, 2 insertions(+), 2 deletions(-)
-To https://github.com/clee1994/finer_is_better
-   cf37d31..fb0daec  main -> main
-Perplexity: 6.561672210693359
-Evaluating meta-llama/Llama-3.1-8B with block size 16, prevent_zero=True, four_over_six=True, use_ue5m3=True, num_steps=None
-Loading weights:   0%|          | 0/291 [00:00<?, ?it/s]Loading weights: 100%|██████████| 291/291 [00:00<00:00, 4568.57it/s]
-Token indices sequence length is longer than the specified maximum sequence length for this model (289077 > 131072). Running this sequence through the model will result in indexing errors
-Identified head: lm_head
-Replacing layer: model.layers.0.mlp.gate_proj
-Replacing layer: model.layers.0.mlp.up_proj
-Replacing layer: model.layers.0.mlp.down_proj
-Replacing layer: model.layers.1.mlp.gate_proj
-Replacing layer: model.layers.1.mlp.up_proj
-Replacing layer: model.layers.1.mlp.down_proj
-Replacing layer: model.layers.2.mlp.gate_proj
-Replacing layer: model.layers.2.mlp.up_proj
-Replacing layer: model.layers.2.mlp.down_proj
-Replacing layer: model.layers.3.mlp.gate_proj
-Replacing layer: model.layers.3.mlp.up_proj
-Replacing layer: model.layers.3.mlp.down_proj
-Replacing layer: model.layers.4.mlp.gate_proj
-Replacing layer: model.layers.4.mlp.up_proj
-Replacing layer: model.layers.4.mlp.down_proj
-Replacing layer: model.layers.5.mlp.gate_proj
-Replacing layer: model.layers.5.mlp.up_proj
-Replacing layer: model.layers.5.mlp.down_proj
-Replacing layer: model.layers.6.mlp.gate_proj
-Replacing layer: model.layers.6.mlp.up_proj
-Replacing layer: model.layers.6.mlp.down_proj
-Replacing layer: model.layers.7.mlp.gate_proj
-Replacing layer: model.layers.7.mlp.up_proj
-Replacing layer: model.layers.7.mlp.down_proj
-Replacing layer: model.layers.8.mlp.gate_proj
-Replacing layer: model.layers.8.mlp.up_proj
-Replacing layer: model.layers.8.mlp.down_proj
-Replacing layer: model.layers.9.mlp.gate_proj
-Replacing layer: model.layers.9.mlp.up_proj
-Replacing layer: model.layers.9.mlp.down_proj
-Replacing layer: model.layers.10.mlp.gate_proj
-Replacing layer: model.layers.10.mlp.up_proj
-Replacing layer: model.layers.10.mlp.down_proj
-Replacing layer: model.layers.11.mlp.gate_proj
-Replacing layer: model.layers.11.mlp.up_proj
-Replacing layer: model.layers.11.mlp.down_proj
-Replacing layer: model.layers.12.mlp.gate_proj
-Replacing layer: model.layers.12.mlp.up_proj
-Replacing layer: model.layers.12.mlp.down_proj
-Replacing layer: model.layers.13.mlp.gate_proj
-Replacing layer: model.layers.13.mlp.up_proj
-Replacing layer: model.layers.13.mlp.down_proj
-Replacing layer: model.layers.14.mlp.gate_proj
-Replacing layer: model.layers.14.mlp.up_proj
-Replacing layer: model.layers.14.mlp.down_proj
-Replacing layer: model.layers.15.mlp.gate_proj
-Replacing layer: model.layers.15.mlp.up_proj
-Replacing layer: model.layers.15.mlp.down_proj
-Replacing layer: model.layers.16.mlp.gate_proj
-Replacing layer: model.layers.16.mlp.up_proj
-Replacing layer: model.layers.16.mlp.down_proj
-Replacing layer: model.layers.17.mlp.gate_proj
-Replacing layer: model.layers.17.mlp.up_proj
-Replacing layer: model.layers.17.mlp.down_proj
-Replacing layer: model.layers.18.mlp.gate_proj
-Replacing layer: model.layers.18.mlp.up_proj
-Replacing layer: model.layers.18.mlp.down_proj
-Replacing layer: model.layers.19.mlp.gate_proj
-Replacing layer: model.layers.19.mlp.up_proj
-Replacing layer: model.layers.19.mlp.down_proj
-Replacing layer: model.layers.20.mlp.gate_proj
-Replacing layer: model.layers.20.mlp.up_proj
-Replacing layer: model.layers.20.mlp.down_proj
-Replacing layer: model.layers.21.mlp.gate_proj
-Replacing layer: model.layers.21.mlp.up_proj
-Replacing layer: model.layers.21.mlp.down_proj
-Replacing layer: model.layers.22.mlp.gate_proj
-Replacing layer: model.layers.22.mlp.up_proj
-Replacing layer: model.layers.22.mlp.down_proj
-Replacing layer: model.layers.23.mlp.gate_proj
-Replacing layer: model.layers.23.mlp.up_proj
-Replacing layer: model.layers.23.mlp.down_proj
-Replacing layer: model.layers.24.mlp.gate_proj
-Replacing layer: model.layers.24.mlp.up_proj
-Replacing layer: model.layers.24.mlp.down_proj
-Replacing layer: model.layers.25.mlp.gate_proj
-Replacing layer: model.layers.25.mlp.up_proj
-Replacing layer: model.layers.25.mlp.down_proj
-Replacing layer: model.layers.26.mlp.gate_proj
-Replacing layer: model.layers.26.mlp.up_proj
-Replacing layer: model.layers.26.mlp.down_proj
-Replacing layer: model.layers.27.mlp.gate_proj
-Replacing layer: model.layers.27.mlp.up_proj
-Replacing layer: model.layers.27.mlp.down_proj
-Replacing layer: model.layers.28.mlp.gate_proj
-Replacing layer: model.layers.28.mlp.up_proj
-Replacing layer: model.layers.28.mlp.down_proj
-Replacing layer: model.layers.29.mlp.gate_proj
-Replacing layer: model.layers.29.mlp.up_proj
-Replacing layer: model.layers.29.mlp.down_proj
-Replacing layer: model.layers.30.mlp.gate_proj
-Replacing layer: model.layers.30.mlp.up_proj
-Replacing layer: model.layers.30.mlp.down_proj
-Replacing layer: model.layers.31.mlp.gate_proj
-Replacing layer: model.layers.31.mlp.up_proj
-Replacing layer: model.layers.31.mlp.down_proj
-  0%|          | 0/142 [00:00<?, ?it/s]  1%|          | 1/142 [00:01<04:05,  1.74s/it]  1%|▏         | 2/142 [00:03<04:01,  1.73s/it]  2%|▏         | 3/142 [00:05<03:59,  1.72s/it]  3%|▎         | 4/142 [00:06<03:56,  1.72s/it]  4%|▎         | 5/142 [00:08<03:54,  1.71s/it]  4%|▍         | 6/142 [00:10<03:53,  1.71s/it]  5%|▍         | 7/142 [00:12<03:51,  1.71s/it]  6%|▌         | 8/142 [00:13<03:49,  1.71s/it]  6%|▋         | 9/142 [00:15<03:47,  1.71s/it]  7%|▋         | 10/142 [00:17<03:46,  1.71s/it]  8%|▊         | 11/142 [00:18<03:44,  1.71s/it]  8%|▊         | 12/142 [00:20<03:42,  1.71s/it]  9%|▉         | 13/142 [00:22<03:40,  1.71s/it] 10%|▉         | 14/142 [00:24<03:39,  1.71s/it] 11%|█         | 15/142 [00:25<03:37,  1.71s/it] 11%|█▏        | 16/142 [00:27<03:35,  1.71s/it] 12%|█▏        | 17/142 [00:29<03:33,  1.71s/it] 13%|█▎        | 18/142 [00:30<03:32,  1.71s/it] 13%|█▎        | 19/142 [00:32<03:30,  1.71s/it] 14%|█▍        | 20/142 [00:34<03:28,  1.71s/it] 15%|█▍        | 21/142 [00:35<03:27,  1.71s/it] 15%|█▌        | 22/142 [00:37<03:25,  1.71s/it] 16%|█▌        | 23/142 [00:39<03:23,  1.71s/it] 17%|█▋        | 24/142 [00:41<03:21,  1.71s/it] 18%|█▊        | 25/142 [00:42<03:20,  1.71s/it] 18%|█▊        | 26/142 [00:44<03:18,  1.71s/it] 19%|█▉        | 27/142 [00:46<03:16,  1.71s/it] 20%|█▉        | 28/142 [00:47<03:15,  1.71s/it] 20%|██        | 29/142 [00:49<03:13,  1.71s/it] 21%|██        | 30/142 [00:51<03:11,  1.71s/it] 22%|██▏       | 31/142 [00:53<03:09,  1.71s/it] 23%|██▎       | 32/142 [00:54<03:08,  1.71s/it] 23%|██▎       | 33/142 [00:56<03:06,  1.71s/it] 24%|██▍       | 34/142 [00:58<03:04,  1.71s/it] 25%|██▍       | 35/142 [00:59<03:03,  1.71s/it] 25%|██▌       | 36/142 [01:01<03:01,  1.71s/it] 26%|██▌       | 37/142 [01:03<02:59,  1.71s/it] 27%|██▋       | 38/142 [01:05<02:57,  1.71s/it] 27%|██▋       | 39/142 [01:06<02:56,  1.71s/it] 28%|██▊       | 40/142 [01:08<02:54,  1.71s/it] 29%|██▉       | 41/142 [01:10<02:52,  1.71s/it] 30%|██▉       | 42/142 [01:11<02:51,  1.71s/it] 30%|███       | 43/142 [01:13<02:49,  1.71s/it] 31%|███       | 44/142 [01:15<02:47,  1.71s/it] 32%|███▏      | 45/142 [01:17<02:45,  1.71s/it] 32%|███▏      | 46/142 [01:18<02:44,  1.71s/it] 33%|███▎      | 47/142 [01:20<02:42,  1.71s/it] 34%|███▍      | 48/142 [01:22<02:40,  1.71s/it] 35%|███▍      | 49/142 [01:23<02:39,  1.71s/it] 35%|███▌      | 50/142 [01:25<02:37,  1.71s/it] 36%|███▌      | 51/142 [01:27<02:35,  1.71s/it] 37%|███▋      | 52/142 [01:29<02:34,  1.71s/it] 37%|███▋      | 53/142 [01:30<02:32,  1.71s/it] 38%|███▊      | 54/142 [01:32<02:30,  1.71s/it] 39%|███▊      | 55/142 [01:34<02:28,  1.71s/it]
