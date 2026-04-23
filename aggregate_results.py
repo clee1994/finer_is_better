@@ -18,6 +18,9 @@ def aggregate_results():
         
     combined_df = pd.concat(dfs)
     
+    # Drop duplicate rows (keep the last one, which should be the most recent)
+    combined_df = combined_df[~combined_df.index.duplicated(keep='last')]
+    
     # Save combined results to results.csv to let update_readme use it!
     combined_df.to_csv("/home/cjsschaefer_google_com/finer_is_better/results.csv")
     print("Saved combined results to results.csv")

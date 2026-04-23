@@ -11,51 +11,51 @@ def apply_style():
   mpl.rcParams.update(mpl.rcParamsDefault)
 
   # Font Configuration
-  mpl.rcParams[font.family] = serif
-  mpl.rcParams[font.serif] = [Times New Roman, DejaVu Serif, serif]
-  mpl.rcParams[font.size] = 10
-  mpl.rcParams[axes.labelsize] = 10
-  mpl.rcParams[axes.titlesize] = 10
-  mpl.rcParams[xtick.labelsize] = 8
-  mpl.rcParams[ytick.labelsize] = 8
-  mpl.rcParams[legend.fontsize] = 8
-  mpl.rcParams[figure.titlesize] = 12
+  mpl.rcParams['font.family'] = 'serif'
+  mpl.rcParams['font.serif'] = ['Times New Roman', 'DejaVu Serif', 'serif']
+  mpl.rcParams['font.size'] = 16
+  mpl.rcParams['axes.labelsize'] = 16
+  mpl.rcParams['axes.titlesize'] = 16
+  mpl.rcParams['xtick.labelsize'] = 14
+  mpl.rcParams['ytick.labelsize'] = 14
+  mpl.rcParams['legend.fontsize'] = 14
+  mpl.rcParams['figure.titlesize'] = 18
 
   # Figure Size
-  mpl.rcParams[figure.figsize] = (6.5, 4.0)
-  mpl.rcParams[figure.dpi] = 300
-  mpl.rcParams[savefig.dpi] = 300
-  mpl.rcParams[figure.constrained_layout.use] = True
+  mpl.rcParams['figure.figsize'] = (8.0, 5.0) # Increased figure size to accommodate larger fonts!
+  mpl.rcParams['figure.dpi'] = 300
+  mpl.rcParams['savefig.dpi'] = 300
+  mpl.rcParams['figure.constrained_layout.use'] = True
 
   # Axes and Spines
-  mpl.rcParams[axes.spines.top] = False
-  mpl.rcParams[axes.spines.right] = False
-  mpl.rcParams[axes.linewidth] = 0.8
-  mpl.rcParams[axes.edgecolor] = black
-  mpl.rcParams[xtick.major.width] = 0.8
-  mpl.rcParams[ytick.major.width] = 0.8
-  mpl.rcParams[xtick.minor.width] = 0.6
-  mpl.rcParams[ytick.minor.width] = 0.6
-  mpl.rcParams[xtick.direction] = out
-  mpl.rcParams[ytick.direction] = out
+  mpl.rcParams['axes.spines.top'] = False
+  mpl.rcParams['axes.spines.right'] = False
+  mpl.rcParams['axes.linewidth'] = 1.0
+  mpl.rcParams['axes.edgecolor'] = 'black'
+  mpl.rcParams['xtick.major.width'] = 1.0
+  mpl.rcParams['ytick.major.width'] = 1.0
+  mpl.rcParams['xtick.minor.width'] = 0.8
+  mpl.rcParams['ytick.minor.width'] = 0.8
+  mpl.rcParams['xtick.direction'] = 'out'
+  mpl.rcParams['ytick.direction'] = 'out'
 
   # Grid
-  mpl.rcParams[axes.grid] = True
-  mpl.rcParams[grid.alpha] = 0.3
-  mpl.rcParams[grid.linestyle] = --
-  mpl.rcParams[grid.linewidth] = 0.6
+  mpl.rcParams['axes.grid'] = True
+  mpl.rcParams['grid.alpha'] = 0.3
+  mpl.rcParams['grid.linestyle'] = '--'
+  mpl.rcParams['grid.linewidth'] = 0.8
 
   # Colors (Colorblind friendly palette)
-  cycle = mpl.cycler(color=[#4C72B0, #DD8452, #55A868, #C44E52, #8172B3, #937860, #DA8BC3, #8C8C8C, #CCB974, #64B5CD])
-  mpl.rcParams[axes.prop_cycle] = cycle
+  cycle = mpl.cycler(color=['#4C72B0', '#DD8452', '#55A868', '#C44E52', '#8172B3', '#937860', '#DA8BC3', '#8C8C8C', '#CCB974', '#64B5CD'])
+  mpl.rcParams['axes.prop_cycle'] = cycle
 
   # Legend
-  mpl.rcParams[legend.frameon] = False
-  mpl.rcParams[legend.loc] = best
+  mpl.rcParams['legend.frameon'] = False
+  mpl.rcParams['legend.loc'] = 'best'
   
   # Saving
-  mpl.rcParams[savefig.bbox] = tight
-  mpl.rcParams[savefig.pad_inches] = 0.05
+  mpl.rcParams['savefig.bbox'] = 'tight'
+  mpl.rcParams['savefig.pad_inches'] = 0.05
 
 def plot_model(model_name, df, output_path):
     plt.figure()
@@ -71,9 +71,27 @@ def plot_model(model_name, df, output_path):
         plt.close()
         return
         
-    for row in rows:
-        option = row.replace(model_name + "_", "")
+    mapping = {
+        "e4m3_no_pz": "e4m3",
+        "e4m3_pz": "e4m3 + PZ",
+        "4over6_no_pz": "e4m3 + 4o6",
+        "4over6_pz": "e4m3 + 4o6 + PZ",
+        "ue5m3_no_pz": "ue5m3",
+        "ue5m3_pz": "ue5m3 + PZ",
+        "4over6_pz_ue5m3": "ue5m3 + 4o6 + PZ"
+    }
+    
+    order = ["e4m3", "e4m3 + PZ", "e4m3 + 4o6", "e4m3 + 4o6 + PZ", "ue5m3", "ue5m3 + PZ", "ue5m3 + 4o6 + PZ"]
+    
+    # Map and sort rows
+    mapped_rows = []
+    for r in rows:
+        option = r.replace(model_name + "_", "")
+        mapped_rows.append((r, mapping.get(option, option)))
         
+    sorted_rows = sorted(mapped_rows, key=lambda x: order.index(x[1]) if x[1] in order else 999)
+    
+    for row, label in sorted_rows:
         gaps = []
         for c in columns:
             val = df.loc[row, c]
@@ -89,7 +107,7 @@ def plot_model(model_name, df, output_path):
         if not plot_x:
             continue
 
-        plt.plot(plot_x, plot_y, marker="o", linestyle="-", linewidth=2, label=option)
+        plt.plot(plot_x, plot_y, marker="o", linestyle="-", linewidth=2, label=label)
 
     plt.xlabel("Block Size")
     plt.ylabel("Perplexity Gap")
@@ -106,8 +124,7 @@ def plot_model(model_name, df, output_path):
 if __name__ == "__main__":
     apply_style()
     
-    # Default to results_torch.csv for simulation results!
-    csv_path = "/home/cjsschaefer_google_com/finer_is_better/results_torch.csv"
+    csv_path = "/home/cjsschaefer_google_com/finer_is_better/results.csv"
     if len(sys.argv) > 1:
         csv_path = sys.argv[1]
         
@@ -122,7 +139,6 @@ if __name__ == "__main__":
         os.makedirs(plots_dir)
         print(f"Created folder: {plots_dir}")
 
-    # Extract model names (prefix before _)
     models = list(set([r.split("_")[0] for r in df.index]))
     
     for m in models:
