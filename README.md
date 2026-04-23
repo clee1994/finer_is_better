@@ -85,10 +85,10 @@ This section is automatically updated by the evaluation script after each run. D
 | DeepSeek_ue5m3_no_pz  |     nan    |   0.32 |   0.48 |    0.64 |    0.82 |    0.97 |     1.22 |     1.53 |
 | DeepSeek_ue5m3_pz     |     nan    |   0.24 |   0.36 |    0.54 |    0.72 |    0.92 |     1.2  |     1.53 |
 | Qwen_e4m3_no_pz       |     nan    |   0.47 |   0.49 |    0.56 |    0.65 |    0.81 |     1.04 |     1.49 |
-| Llama 3.1 8B          |     nan    |   1.74 |   1.43 |    1.29 |    1.22 |    1.23 |     1.35 |     1.53 |
-| Granite 3.3 8B        |     nan    | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
-| Qwen 2.5 14B          |     nan    | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
-| DeepSeek 7B           |     nan    | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
+| Llama                 |     nan    |   1.74 |   1.43 |    1.29 |    1.22 |    1.23 |     1.35 |     1.53 |
+| Granite               |     nan    | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
+| Qwen                  |     nan    | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
+| DeepSeek              |     nan    | nan    | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
 
 ### Graphs
 <table>
@@ -153,16 +153,16 @@ This section is automatically updated by the evaluation script after each run. D
 <p align="center">Qwen_e4m3_no_pz Gap</p></td>
   </tr>
   <tr>
-    <td><img src="plots/gap_llama_3.1_8b.png" alt="Llama 3.1 8B Gap" width="400">
-<p align="center">Llama 3.1 8B Gap</p></td>
-    <td><img src="plots/gap_granite_3.3_8b.png" alt="Granite 3.3 8B Gap" width="400">
-<p align="center">Granite 3.3 8B Gap</p></td>
+    <td><img src="plots/gap_llama.png" alt="Llama Gap" width="400">
+<p align="center">Llama Gap</p></td>
+    <td><img src="plots/gap_granite.png" alt="Granite Gap" width="400">
+<p align="center">Granite Gap</p></td>
   </tr>
   <tr>
-    <td><img src="plots/gap_qwen_2.5_14b.png" alt="Qwen 2.5 14B Gap" width="400">
-<p align="center">Qwen 2.5 14B Gap</p></td>
-    <td><img src="plots/gap_deepseek_7b.png" alt="DeepSeek 7B Gap" width="400">
-<p align="center">DeepSeek 7B Gap</p></td>
+    <td><img src="plots/gap_qwen.png" alt="Qwen Gap" width="400">
+<p align="center">Qwen Gap</p></td>
+    <td><img src="plots/gap_deepseek.png" alt="DeepSeek Gap" width="400">
+<p align="center">DeepSeek Gap</p></td>
   </tr>
 </table>
 
