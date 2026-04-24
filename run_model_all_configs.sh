@@ -8,33 +8,7 @@ echo "Activating environment..."
 source ~/quant_eval_venv/bin/activate
 
 MODEL_ID=$1
-# Run full dataset (no step limit) by omitting 6th argument!
 BLOCK_SIZES="4,8,16,32,64,128,256"
-
-echo "Running evaluation for $MODEL_ID across all configs..."
-
-# FAST CONFIGS FIRST
-echo "1. e4m3 (no pz)"
-python3 torch_eval.py $MODEL_ID $BLOCK_SIZES false false false
-
-echo "2. e4m3 + PZ"
-python3 torch_eval.py $MODEL_ID $BLOCK_SIZES true false false
-
-echo "3. 4over6 (no pz)"
-python3 torch_eval.py $MODEL_ID $BLOCK_SIZES false true false
-
-echo "4. 4over6 + PZ"
-python3 torch_eval.py $MODEL_ID $BLOCK_SIZES true true false
-
-# SLOW CONFIGS LAST (ue5m3)
-echo "5. ue5m3 (no pz)"
-python3 torch_eval.py $MODEL_ID $BLOCK_SIZES false false true
-
-echo "6. ue5m3 + PZ"
-python3 torch_eval.py $MODEL_ID $BLOCK_SIZES true false true
-
-echo "7. 4over6 + PZ + ue5m3"
-python3 torch_eval.py $MODEL_ID $BLOCK_SIZES true true true
 
 DISP_NAME="unknown"
 if [[ "$MODEL_ID" == *"llama"* ]]; then
@@ -46,6 +20,32 @@ elif [[ "$MODEL_ID" == *"qwen"* ]]; then
 elif [[ "$MODEL_ID" == *"deepseek"* ]]; then
     DISP_NAME="deepseek"
 fi
+
+echo "Running evaluation for $MODEL_ID across all configs..."
+
+
+# Hierarchical Scaling Variants
+# 9. e4m3 + H
+python3 torch_eval.py $MODEL_ID $BLOCK_SIZES false false false true
+# 10. e4m3 + PZ + H
+python3 torch_eval.py $MODEL_ID $BLOCK_SIZES true false false true
+# 11. e4m3 + 4o6 + H
+python3 torch_eval.py $MODEL_ID $BLOCK_SIZES false true false true
+# 12. e4m3 + 4o6 + PZ + H
+python3 torch_eval.py $MODEL_ID $BLOCK_SIZES true true false true
+# 13. ue5m3 + H
+python3 torch_eval.py $MODEL_ID $BLOCK_SIZES false false true true
+# 14. ue5m3 + PZ + H
+python3 torch_eval.py $MODEL_ID $BLOCK_SIZES true false true true
+# 15. ue5m3 + 4o6 + H
+python3 torch_eval.py $MODEL_ID $BLOCK_SIZES false true true true
+# 16. ue5m3 + 4o6 + PZ + H
+python3 torch_eval.py $MODEL_ID $BLOCK_SIZES true true true true
+
+echo "Committing and pushing results for $DISP_NAME..."
+git add results_${DISP_NAME}.csv
+git commit -m "Add final results for $DISP_NAME"
+git push
 
 # Polling for all results
 EXPECTED_FILES=("results_llama.csv" "results_granite.csv" "results_qwen.csv" "results_deepseek.csv")
@@ -71,6 +71,6 @@ while [ "$all_present" = false ]; do
 done
 
 echo "All results present! Running final aggregation..."
-python3 aggregate_results.py
+python3 cleanup_and_plot.py
 
-echo "Master script execution completed for $DISP_NAME!"
+echo "Master script execution completed!"
