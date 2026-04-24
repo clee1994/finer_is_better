@@ -164,7 +164,7 @@ This section is automatically updated by the evaluation script after each run. D
 | ue5m3 + H            |       5.36 |   0.27 |   0.39 |    0.5  |    0.64 |    0.8  |     1.05 |     1.47 |
 | ue5m3 + PZ + H       |       5.36 |   0.27 |   0.39 |    0.5  |    0.64 |    0.8  |     1.05 |     1.47 |
 | ue5m3 + 4o6 + H      |       5.36 |   0.19 |   0.32 |    0.45 |    0.61 |    0.78 |     1.03 |     1.49 |
-| ue5m3 + 4o6 + PZ + H |       5.36 |   0.19 |   0.32 |    0.45 |  nan    |  nan    |   nan    |   nan    |
+| ue5m3 + 4o6 + PZ + H |       5.36 |   0.19 |   0.32 |    0.45 |    0.61 |  nan    |   nan    |   nan    |
 
 ### Perplexity Gap All Models
 ![Perplexity Gap All Models](plots/gap_all_models.png)
