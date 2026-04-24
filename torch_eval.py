@@ -52,11 +52,33 @@ def quantize_fp8_simulate(val, prevent_zero=True, use_ue5m3=False):
 # -------------------------------------------------------------------------
 # Quantization Logic (Pure PyTorch Simulation)
 # -------------------------------------------------------------------------
-def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_ue5m3=False):
+def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_ue5m3=False, use_hierarchical=False, channel_dim=0):
     init_shape = x.shape
-    x_reshaped = x.reshape(-1, block_size)
     
-    max_val = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
+    if use_hierarchical:
+        # Compute per-channel scale
+        # Reduce along all dimensions except channel_dim
+        axes = list(range(len(x.shape)))
+        norm_channel_dim = channel_dim if channel_dim >= 0 else len(x.shape) + channel_dim
+        axes.remove(norm_channel_dim)
+        
+        max_channel = torch.amax(torch.abs(x), dim=axes, keepdim=True)
+        
+        if not use_ue5m3:
+            max_fp8 = 448.0
+        else:
+            grid, _ = get_ue5m3_grid()
+            max_fp8 = torch.max(grid).item()
+            
+        channel_scale = max_channel / max_fp8
+        # Avoid division by zero
+        channel_scale = torch.where(channel_scale != 0, channel_scale, torch.ones_like(channel_scale))
+        
+        x_norm = x / channel_scale
+    else:
+        x_norm = x
+        
+    x_reshaped = x_norm.reshape(-1, block_size)
     
     def quantize_fp4(abs_clipped, sign):
         th = torch.tensor([0.250125, 0.749765, 1.250495, 1.749515, 2.500990, 3.499030, 5.001970], dtype=torch.float32).cuda()
@@ -66,7 +88,7 @@ def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_u
         return quant * sign
         
     if not four_over_six:
-        raw_scale = max_val / 6.0
+        raw_scale = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values / 6.0
         scaling_factor = quantize_fp8_simulate(raw_scale, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
         
         # Safe division to mimic JAX behavior without NaN propagation
@@ -83,6 +105,7 @@ def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_u
         dequant = quant * scaling_factor
         use_4 = torch.zeros_like(scaling_factor, dtype=torch.bool)
     else:
+        max_val = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
         raw_scale_4 = (max_val / 6.0) * 1.5
         raw_scale_6 = max_val / 6.0
         
@@ -114,19 +137,24 @@ def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_u
         quant = torch.where(use_4, quant_4, quant_6)
         scaling_factor = torch.where(use_4, scale_4, scale_6)
         
-    return dequant.reshape(init_shape).to(x.dtype), quant.reshape(init_shape), scaling_factor, use_4
+    dequant = dequant.reshape(init_shape)
+    if use_hierarchical:
+        dequant = dequant * channel_scale
+        
+    return dequant.to(x.dtype), quant.reshape(init_shape), scaling_factor, use_4
 
 class TorchMXLinear(nn.Linear):
-    def __init__(self, in_features, out_features, bias=True, block_size=32, prevent_zero=True, four_over_six=False, use_ue5m3=False):
+    def __init__(self, in_features, out_features, bias=True, block_size=32, prevent_zero=True, four_over_six=False, use_ue5m3=False, use_hierarchical=False):
         super().__init__(in_features, out_features, bias)
         self.block_size = block_size
         self.prevent_zero = prevent_zero
         self.four_over_six = four_over_six
         self.use_ue5m3 = use_ue5m3
+        self.use_hierarchical = use_hierarchical
         
     def forward(self, input):
-        q_weight, _, _, _ = FP4_quant_torch(self.weight, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3)
-        q_input, _, _, _ = FP4_quant_torch(input, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3)
+        q_weight, _, _, _ = FP4_quant_torch(self.weight, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical, channel_dim=0)
+        q_input, _, _, _ = FP4_quant_torch(input, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical, channel_dim=-1)
         return F.linear(q_input, q_weight, self.bias)
 
 def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, use_ue5m3=False, num_steps=None):

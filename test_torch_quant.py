@@ -171,6 +171,34 @@ def test_ue5m3():
     assert torch.isclose(max_val, torch.tensor(61440.0).cuda()), f"Max value should be 61440.0! Got {max_val}"
     print("Case 9 passed!")
 
+def test_hierarchical_scaling_overflow():
+    print("\n--- Test Case 10: Verify Hierarchical Scaling Overflow Protection ---")
+    
+    x = torch.zeros(1, 32, dtype=torch.float32).cuda()
+    # Values up to 5000, will cause block scale to be ~833 > 448
+    x[0] = torch.linspace(1000.0, 5000.0, 32).cuda()
+    
+    # Without hierarchical scaling
+    qx_std, _, scale_std, _ = FP4_quant_torch(x, block_size=32, use_hierarchical=False)
+    print(f"Standard scale: {scale_std.item()}")
+    # It should be clipped to 448.0!
+    assert torch.isclose(scale_std, torch.tensor(448.0).cuda()), f"Expected scale to be clipped to 448.0, got {scale_std.item()}"
+    
+    # With hierarchical scaling
+    qx_hier, _, scale_hier, _ = FP4_quant_torch(x, block_size=32, use_hierarchical=True, channel_dim=0)
+    print(f"Hierarchical block scale: {scale_hier.item()}")
+    # It should be much smaller!
+    assert scale_hier.item() < 100.0, f"Expected smaller block scale, got {scale_hier.item()}"
+    
+    # Compare MSE
+    mse_std = torch.mean((x - qx_std)**2)
+    mse_hier = torch.mean((x - qx_hier)**2)
+    print(f"MSE Standard: {mse_std.item()}")
+    print(f"MSE Hierarchical: {mse_hier.item()}")
+    
+    assert mse_hier < mse_std / 10.0, "Hierarchical scaling did not significantly reduce MSE for large values!"
+    print("Case 10 passed!")
+
 if __name__ == "__main__":
     test_torch_quant()
     test_against_jax()
@@ -178,3 +206,4 @@ if __name__ == "__main__":
     test_snr_improvement()
     test_heterodoxy()
     test_ue5m3()
+    test_hierarchical_scaling_overflow()
