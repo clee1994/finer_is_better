@@ -99,18 +99,8 @@ This section is automatically updated by the evaluation script after each run. D
 ### Perplexity Gap All Models
 ![Perplexity Gap All Models](plots/gap_all_models.png)
 
-### Per-Model Distributions
-#### Qwen
-![Qwen](plots/dist_qwen2.5-14b.png)
-
-#### Granite
-![Granite](plots/dist_granite-3.3-8b.png)
-
-#### Llama
-![Llama](plots/dist_llama-3.1-8b.png)
-
-#### DeepSeek
-![DeepSeek](plots/dist_deepseek-llm-7b-base.png)
+### Weights and Activations Distributions
+![Weights and Activations Distributions](plots/dist_all_models.png)
 
 
 
