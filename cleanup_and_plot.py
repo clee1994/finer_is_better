@@ -64,7 +64,10 @@ def cleanup_and_plot():
     
     # Remove old broken plots from disk and git
     old_plots = glob.glob("/home/cjsschaefer_google_com/finer_is_better/plots/gap_*.png")
-    valid_plots = ["gap_llama.png", "gap_granite.png", "gap_qwen.png", "gap_deepseek.png"]
+    valid_plots = [
+        "gap_all_models.png",
+        "dist_all_models.png"
+    ]
     
     for p in old_plots:
         base = os.path.basename(p)

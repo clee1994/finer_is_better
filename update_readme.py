@@ -35,11 +35,12 @@ def update_readme():
         "4over6_no_pz": "e4m3 + 4o6",
         "4over6_pz": "e4m3 + 4o6 + PZ",
         "ue5m3_no_pz": "ue5m3",
-        "ue5m3_pz": "ue5m3 + 4o6 + PZ",
+        "ue5m3_pz": "ue5m3 + PZ",
+        "4over6_ue5m3": "ue5m3 + 4o6",
         "4over6_pz_ue5m3": "ue5m3 + 4o6 + PZ"
     }
     
-    order = ["e4m3", "e4m3 + PZ", "e4m3 + 4o6", "e4m3 + 4o6 + PZ", "ue5m3", "ue5m3 + PZ", "ue5m3 + 4o6 + PZ"]
+    order = ["e4m3", "e4m3 + PZ", "e4m3 + 4o6", "e4m3 + 4o6 + PZ", "ue5m3", "ue5m3 + PZ", "ue5m3 + 4o6", "ue5m3 + 4o6 + PZ"]
     
     for m in models:
         full_content += f"### {m}\n\n"
@@ -68,29 +69,11 @@ def update_readme():
         model_df_formatted = model_df.map(format_cell).astype(str)
         full_content += model_df_formatted.to_markdown() + "\n\n"
 
-    # Append image links side-by-side in an HTML table with captions below
-    image_links = "### Graphs\n"
-    image_links += "<table>\n"
+    # Add consolidated graph at the end
+    # Add consolidated graph at the end
+    full_content += "### Perplexity Gap All Models\n"
+    full_content += "![Perplexity Gap All Models](plots/gap_all_models.png)\n\n"
     
-    for i in range(0, len(models), 2):
-        m1 = models[i]
-        suffix1 = m1.lower().replace(" ", "_")
-        img1 = f"<img src=\"plots/gap_{suffix1}.png\" alt=\"{m1} Gap\" width=\"400\">"
-        cap1 = f"<p align=\"center\">{m1} Gap</p>"
-
-        if i + 1 < len(models):
-            m2 = models[i+1]
-            suffix2 = m2.lower().replace(" ", "_")
-            img2 = f"<img src=\"plots/gap_{suffix2}.png\" alt=\"{m2} Gap\" width=\"400\">"
-            cap2 = f"<p align=\"center\">{m2} Gap</p>"
-
-            image_links += f"  <tr>\n    <td>{img1}\n{cap1}</td>\n    <td>{img2}\n{cap2}</td>\n  </tr>\n"
-        else:
-            image_links += f"  <tr>\n    <td>{img1}\n{cap1}</td>\n    <td></td>\n  </tr>\n"
-
-    image_links += "</table>\n"
-
-    full_content += image_links
 
     if not os.path.exists(readme_path):
         print("README.md not found. Creating a skeleton one.")

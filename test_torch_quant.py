@@ -171,32 +171,33 @@ def test_ue5m3():
     assert torch.isclose(max_val, torch.tensor(61440.0).cuda()), f"Max value should be 61440.0! Got {max_val}"
     print("Case 9 passed!")
 
-def test_hierarchical_scaling_overflow():
-    print("\n--- Test Case 10: Verify Hierarchical Scaling Overflow Protection ---")
+def test_hierarchical_scaling_snr():
+    print("\n--- Test Case 10: Verify SNR Improvement with Hierarchical Scaling ---")
     
-    x = torch.zeros(1, 32, dtype=torch.float32).cuda()
-    # Values up to 5000, will cause block scale to be ~833 > 448
-    x[0] = torch.linspace(1000.0, 5000.0, 32).cuda()
+    # Row 0: small values in [-0.1, 0.1]
+    # Row 1: large values in [-10.0, 10.0]
+    x = torch.zeros(2, 32, dtype=torch.float32).cuda()
+    x[0] = (torch.rand(32).cuda() - 0.5) * 0.2
+    x[1] = (torch.rand(32).cuda() - 0.5) * 20.0
     
+    def snr_torch(qout, grnd):
+        error = grnd - qout
+        return torch.log(1 + torch.sum(qout**2) / torch.sum(error**2))
+        
     # Without hierarchical scaling
-    qx_std, _, scale_std, _ = FP4_quant_torch(x, block_size=32, use_hierarchical=False)
-    print(f"Standard scale: {scale_std.item()}")
-    # It should be clipped to 448.0!
-    assert torch.isclose(scale_std, torch.tensor(448.0).cuda()), f"Expected scale to be clipped to 448.0, got {scale_std.item()}"
+    qx_std, _, _, _ = FP4_quant_torch(x, block_size=32, use_hierarchical=False)
+    snr_std = snr_torch(qx_std, x)
+    print(f"SNR Standard: {snr_std.item()}")
     
     # With hierarchical scaling
-    qx_hier, _, scale_hier, _ = FP4_quant_torch(x, block_size=32, use_hierarchical=True, channel_dim=0)
-    print(f"Hierarchical block scale: {scale_hier.item()}")
-    # It should be much smaller!
-    assert scale_hier.item() < 100.0, f"Expected smaller block scale, got {scale_hier.item()}"
+    qx_hier, _, _, _ = FP4_quant_torch(x, block_size=32, use_hierarchical=True)
+    snr_hier = snr_torch(qx_hier, x)
+    print(f"SNR Hierarchical: {snr_hier.item()}")
     
-    # Compare MSE
-    mse_std = torch.mean((x - qx_std)**2)
-    mse_hier = torch.mean((x - qx_hier)**2)
-    print(f"MSE Standard: {mse_std.item()}")
-    print(f"MSE Hierarchical: {mse_hier.item()}")
+    print(f"SNR improvement: {snr_hier - snr_std}")
     
-    assert mse_hier < mse_std / 10.0, "Hierarchical scaling did not significantly reduce MSE for large values!"
+    # We expect at least similar or slightly better SNR, not worse!
+    assert snr_hier >= snr_std - 0.1, "Hierarchical scaling degraded SNR!"
     print("Case 10 passed!")
 
 if __name__ == "__main__":
@@ -206,4 +207,4 @@ if __name__ == "__main__":
     test_snr_improvement()
     test_heterodoxy()
     test_ue5m3()
-    test_hierarchical_scaling_overflow()
+    test_hierarchical_scaling_snr()

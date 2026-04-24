@@ -52,15 +52,14 @@ def quantize_fp8_simulate(val, prevent_zero=True, use_ue5m3=False):
 # -------------------------------------------------------------------------
 # Quantization Logic (Pure PyTorch Simulation)
 # -------------------------------------------------------------------------
-def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_ue5m3=False, use_hierarchical=False, channel_dim=0):
+def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_ue5m3=False, use_hierarchical=False):
     init_shape = x.shape
     
     if use_hierarchical:
         # Compute per-channel scale
-        # Reduce along all dimensions except channel_dim
+        # Reduce along all dimensions except dimension 0
         axes = list(range(len(x.shape)))
-        norm_channel_dim = channel_dim if channel_dim >= 0 else len(x.shape) + channel_dim
-        axes.remove(norm_channel_dim)
+        axes.remove(0)
         
         max_channel = torch.amax(torch.abs(x), dim=axes, keepdim=True)
         
@@ -153,8 +152,8 @@ class TorchMXLinear(nn.Linear):
         self.use_hierarchical = use_hierarchical
         
     def forward(self, input):
-        q_weight, _, _, _ = FP4_quant_torch(self.weight, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical, channel_dim=0)
-        q_input, _, _, _ = FP4_quant_torch(input, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical, channel_dim=-1)
+        q_weight, _, _, _ = FP4_quant_torch(self.weight, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical)
+        q_input, _, _, _ = FP4_quant_torch(input, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical)
         return F.linear(q_input, q_weight, self.bias)
 
 def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, use_ue5m3=False, num_steps=None):
