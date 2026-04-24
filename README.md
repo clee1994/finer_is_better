@@ -95,6 +95,7 @@ This section is automatically updated by the evaluation script after each run. D
 | ue5m3            |       4.91 |  -0.03 |   0.04 |    0.11 |    0.19 |    0.38 |     0.6  |     1    |
 | ue5m3 + PZ       |       4.91 |  -0.03 |   0.04 |    0.11 |    0.19 |    0.38 |     0.6  |     1    |
 | ue5m3 + 4o6 + PZ |       4.91 |  -0.08 |  -0.02 |    0.06 |    0.17 |    0.38 |     0.58 |     1.04 |
+| ue5m3 + 4o6      |       4.91 |  -0.08 |  -0.02 |    0.06 |    0.17 |    0.38 |     0.58 |     1.04 |
 
 ### Llama
 
@@ -107,6 +108,7 @@ This section is automatically updated by the evaluation script after each run. D
 | ue5m3            |       6.33 |   0.2  |   0.31 |    0.44 |    0.54 |    0.66 |     0.78 |     1.01 |
 | ue5m3 + PZ       |       6.33 |   0.2  |   0.31 |    0.44 |    0.54 |    0.66 |     0.78 |     1.01 |
 | ue5m3 + 4o6 + PZ |       6.33 |   0.11 |   0.23 |    0.38 |    0.5  |    0.64 |     0.8  |     1    |
+| ue5m3 + 4o6      |       6.33 |   0.11 |   0.23 |    0.38 |    0.5  |    0.64 |     0.8  |     1    |
 
 ### DeepSeek
 
@@ -119,6 +121,7 @@ This section is automatically updated by the evaluation script after each run. D
 | ue5m3            |      12.39 |   0.2  |   0.37 |    0.53 |    0.7  |    0.86 |     1.1  |     1.41 |
 | ue5m3 + PZ       |      12.39 |   0.2  |   0.37 |    0.53 |    0.7  |    0.86 |     1.1  |     1.41 |
 | ue5m3 + 4o6 + PZ |      12.39 |   0.12 |   0.25 |    0.42 |    0.61 |    0.81 |     1.09 |     1.41 |
+| ue5m3 + 4o6      |      12.39 |   0.13 |   0.25 |    0.42 |    0.61 |    0.81 |     1.09 |     1.41 |
 
 ### Qwen
 
@@ -131,6 +134,7 @@ This section is automatically updated by the evaluation script after each run. D
 | ue5m3            |       5.36 |   0.28 |   0.4  |    0.51 |    0.64 |    0.79 |     1.06 |     1.51 |
 | ue5m3 + PZ       |       5.36 |   0.28 |   0.4  |    0.51 |    0.64 |    0.79 |     1.06 |     1.51 |
 | ue5m3 + 4o6 + PZ |       5.36 |   0.19 |   0.32 |    0.45 |    0.6  |    0.78 |     1.05 |     1.5  |
+| ue5m3 + 4o6      |       5.36 |   0.19 |   0.32 |    0.45 |    0.6  |    0.78 |     1.06 |     1.5  |
 
 ### Perplexity Gap All Models
 ![Perplexity Gap All Models](plots/gap_all_models.png)
