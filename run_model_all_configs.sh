@@ -24,19 +24,21 @@ fi
 echo "Running evaluation for $MODEL_ID across all configs..."
 
 
-# Hierarchical Scaling Variants
+# FAST CONFIGS (No 4over6)
 # 9. e4m3 + H
 python3 torch_eval.py $MODEL_ID $BLOCK_SIZES false false false true
 # 10. e4m3 + PZ + H
 python3 torch_eval.py $MODEL_ID $BLOCK_SIZES true false false true
-# 11. e4m3 + 4o6 + H
-python3 torch_eval.py $MODEL_ID $BLOCK_SIZES false true false true
-# 12. e4m3 + 4o6 + PZ + H
-python3 torch_eval.py $MODEL_ID $BLOCK_SIZES true true false true
 # 13. ue5m3 + H
 python3 torch_eval.py $MODEL_ID $BLOCK_SIZES false false true true
 # 14. ue5m3 + PZ + H
 python3 torch_eval.py $MODEL_ID $BLOCK_SIZES true false true true
+
+# SLOW CONFIGS (With 4over6)
+# 11. e4m3 + 4o6 + H
+python3 torch_eval.py $MODEL_ID $BLOCK_SIZES false true false true
+# 12. e4m3 + 4o6 + PZ + H
+python3 torch_eval.py $MODEL_ID $BLOCK_SIZES true true false true
 # 15. ue5m3 + 4o6 + H
 python3 torch_eval.py $MODEL_ID $BLOCK_SIZES false true true true
 # 16. ue5m3 + 4o6 + PZ + H
