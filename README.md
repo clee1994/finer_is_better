@@ -102,7 +102,7 @@ This section is automatically updated by the evaluation script after each run. D
 | e4m3 + 4o6 + PZ + H |       4.91 |  -0.08 |  -0    |    0.07 |    0.18 |    0.38 |     0.58 |     1.07 |
 | ue5m3 + H           |       4.91 |  -0.03 |   0.04 |    0.13 |    0.22 |    0.37 |     0.58 |     1.05 |
 | ue5m3 + PZ + H      |       4.91 |  -0.03 |   0.04 |    0.13 |    0.22 |    0.37 |     0.58 |     1.05 |
-| ue5m3 + 4o6 + H     |       4.91 |  -0.07 | nan    |  nan    |  nan    |  nan    |   nan    |   nan    |
+| ue5m3 + 4o6 + H     |       4.91 |  -0.07 |  -0.02 |    0.07 |  nan    |  nan    |   nan    |   nan    |
 
 ### Llama
 
@@ -161,11 +161,11 @@ This section is automatically updated by the evaluation script after each run. D
 | e4m3 + H             |       5.36 |   0.31 |   0.41 |    0.52 |    0.64 |    0.8  |     1.03 |     1.48 |
 | e4m3 + PZ + H        |       5.36 |   0.3  |   0.41 |    0.51 |    0.63 |    0.79 |     1.03 |     1.48 |
 | e4m3 + 4o6 + H       |       5.36 |   0.19 |   0.33 |    0.46 |    0.61 |    0.79 |     1.03 |     1.47 |
-| e4m3 + 4o6 + PZ + H  |       5.36 |   0.19 |   0.33 |    0.46 |    0.6  |    0.79 |     1.04 |     1.48 |
+| e4m3 + 4o6 + PZ + H  |       5.36 |   0.19 |   0.33 |    0.46 |    0.6  |  nan    |   nan    |   nan    |
 | ue5m3 + H            |       5.36 |   0.27 |   0.39 |    0.5  |    0.64 |    0.8  |     1.05 |     1.47 |
 | ue5m3 + PZ + H       |       5.36 |   0.27 |   0.39 |    0.5  |    0.64 |    0.8  |     1.05 |     1.47 |
 | ue5m3 + 4o6 + H      |       5.36 |   0.19 |   0.32 |    0.45 |    0.61 |    0.78 |     1.03 |     1.49 |
-| ue5m3 + 4o6 + PZ + H |       5.36 |   0.19 |   0.32 |    0.45 |    0.61 |    0.78 |     1.03 |   nan    |
+| ue5m3 + 4o6 + PZ + H |       5.36 |   0.19 |   0.32 |    0.45 |    0.61 |    0.78 |     1.03 |     1.49 |
 
 ### Perplexity Gap All Models
 ![Perplexity Gap All Models](plots/gap_all_models.png)
