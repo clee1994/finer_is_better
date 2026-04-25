@@ -68,8 +68,27 @@ def plot_all_models(df, output_path):
         "ue5m3_pz": "ue5m3 + PZ",
         "4over6_pz_ue5m3": "ue5m3 + 4o6 + PZ"
     }
+    
+    styles = {
+        "e4m3": ("-", "gray"),
+        "e4m3 + H": ("--", "gray"),
+        "e4m3 + PZ": ("-", "blue"),
+        "e4m3 + PZ + H": ("--", "blue"),
+        "e4m3 + 4o6": ("-", "green"),
+        "e4m3 + 4o6 + H": ("--", "green"),
+        "e4m3 + 4o6 + PZ": ("-", "red"),
+        "e4m3 + 4o6 + PZ + H": ("--", "red"),
+        "ue5m3": ("-", "orange"),
+        "ue5m3 + H": ("--", "orange"),
+        "ue5m3 + PZ": ("-", "purple"),
+        "ue5m3 + PZ + H": ("--", "purple"),
+        "ue5m3 + 4o6": ("-", "cyan"),
+        "ue5m3 + 4o6 + H": ("--", "cyan"),
+        "ue5m3 + 4o6 + PZ": ("-", "brown"),
+        "ue5m3 + 4o6 + PZ + H": ("--", "brown")
+    }
 
-    order = ["e4m3", "e4m3 + PZ", "e4m3 + 4o6", "e4m3 + 4o6 + PZ", "ue5m3", "ue5m3 + PZ", "ue5m3 + 4o6 + PZ"]
+    order = ["e4m3", "e4m3 + PZ", "e4m3 + 4o6", "e4m3 + 4o6 + PZ", "ue5m3", "ue5m3 + PZ", "ue5m3 + 4o6", "ue5m3 + 4o6 + PZ", "e4m3 + H", "e4m3 + PZ + H", "e4m3 + 4o6 + H", "e4m3 + 4o6 + PZ + H", "ue5m3 + H", "ue5m3 + PZ + H", "ue5m3 + 4o6 + H", "ue5m3 + 4o6 + PZ + H"]
 
     handles_list = []
     labels_list = []
@@ -110,7 +129,8 @@ def plot_all_models(df, output_path):
             if not plot_x:
                 continue
 
-            line, = ax.plot(plot_x, plot_y, marker="o", linestyle="-", linewidth=3, markersize=8, label=label)
+            style = styles.get(label, ("-", "black"))
+            line, = ax.plot(plot_x, plot_y, marker="o", linestyle=style[0], color=style[1], linewidth=3, markersize=8, label=label)
             
             if not handles_list and label in order:
                  handles_list.append(line)

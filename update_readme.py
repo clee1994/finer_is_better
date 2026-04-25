@@ -2,7 +2,7 @@ import pandas as pd
 import os
 
 def update_readme():
-    csv_path = "/home/cjsschaefer_google_com/finer_is_better/results.csv"
+    csv_path = "/home/cjsschaefer_google_com/finer_is_better/results/results.csv"
     readme_path = "/home/cjsschaefer_google_com/finer_is_better/README.md"
 
     if not os.path.exists(csv_path):
@@ -40,7 +40,12 @@ def update_readme():
         "4over6_pz_ue5m3": "ue5m3 + 4o6 + PZ"
     }
     
-    order = ["e4m3", "e4m3 + PZ", "e4m3 + 4o6", "e4m3 + 4o6 + PZ", "ue5m3", "ue5m3 + PZ", "ue5m3 + 4o6", "ue5m3 + 4o6 + PZ"]
+    order = [
+        "e4m3", "e4m3 + PZ", "e4m3 + 4o6", "e4m3 + 4o6 + PZ",
+        "ue5m3", "ue5m3 + PZ", "ue5m3 + 4o6", "ue5m3 + 4o6 + PZ",
+        "e4m3 + H", "e4m3 + PZ + H", "e4m3 + 4o6 + H", "e4m3 + 4o6 + PZ + H",
+        "ue5m3 + H", "ue5m3 + PZ + H", "ue5m3 + 4o6 + H", "ue5m3 + 4o6 + PZ + H"
+    ]
     
     for m in models:
         full_content += f"### {m}\n\n"
@@ -58,6 +63,9 @@ def update_readme():
             new_index.append(mapping.get(option, option))
             
         model_df.index = new_index
+        
+        # Drop duplicates after mapping to avoid reindex error
+        model_df = model_df[~model_df.index.duplicated(keep="last")]
         
         # Sort according to requested order
         sorted_index = [x for x in order if x in model_df.index]

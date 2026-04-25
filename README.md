@@ -69,7 +69,12 @@ To understand why certain models (like Qwen) are sensitive to quantization, we e
 
 ### Qwen vs Granite Distributions
 
-![Weights and Activations Distributions](plots/dist_all_models.png)
+<table>
+  <tr>
+    <td><img src="plots/qwen_vs_granite_weights.png" alt="Weights Contrast" width="400"><p align="center">Weights Contrast</p></td>
+    <td><img src="plots/qwen_vs_granite_acts.png" alt="Activations Contrast" width="400"><p align="center">Activations Contrast</p></td>
+  </tr>
+</table>
 
 ## Running Tests
 
@@ -84,93 +89,25 @@ This section is automatically updated by the evaluation script after each run. D
 
 <!-- RESULTS_START -->
 
-### Granite
-
-|                      |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |
-|:---------------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|
-| e4m3                 |       4.91 |   0.86 |   0.7  |    0.64 |    0.67 |    0.77 |     0.94 |     1.3  |
-| e4m3 + PZ            |       4.91 |   0.77 |   0.69 |    0.64 |    0.68 |    0.77 |     0.94 |     1.3  |
-| e4m3 + 4o6           |       4.91 |   0.43 |   0.48 |    0.56 |    0.69 |    0.78 |     0.94 |     1.28 |
-| e4m3 + 4o6 + PZ      |       4.91 |   0.43 |   0.48 |    0.56 |    0.7  |    0.78 |     0.94 |     1.28 |
-| ue5m3                |       4.91 |  -0.03 |   0.04 |    0.11 |    0.19 |    0.38 |     0.6  |     1    |
-| ue5m3 + PZ           |       4.91 |  -0.03 |   0.04 |    0.11 |    0.19 |    0.38 |     0.6  |     1    |
-| ue5m3 + 4o6          |       4.91 |  -0.08 |  -0.02 |    0.06 |    0.17 |    0.38 |     0.58 |     1.04 |
-| ue5m3 + 4o6 + PZ     |       4.91 |  -0.08 |  -0.02 |    0.06 |    0.17 |    0.38 |     0.58 |     1.04 |
-| e4m3 + H             |       4.91 |   0    |   0.07 |    0.14 |    0.21 |    0.38 |     0.6  |     1.05 |
-| e4m3 + PZ + H        |       4.91 |  -0.03 |   0.04 |    0.12 |    0.2  |    0.37 |     0.6  |     1.05 |
-| e4m3 + 4o6 + H       |       4.91 |  -0.06 |  -0    |    0.07 |    0.18 |    0.38 |     0.59 |     1.07 |
-| e4m3 + 4o6 + PZ + H  |       4.91 |  -0.08 |  -0    |    0.07 |    0.18 |    0.38 |     0.58 |     1.07 |
-| ue5m3 + H            |       4.91 |  -0.03 |   0.04 |    0.13 |    0.22 |    0.37 |     0.58 |     1.05 |
-| ue5m3 + PZ + H       |       4.91 |  -0.03 |   0.04 |    0.13 |    0.22 |    0.37 |     0.58 |     1.05 |
-| ue5m3 + 4o6 + H      |       4.91 |  -0.07 |  -0.02 |    0.07 |    0.21 |    0.35 |     0.57 |     1.05 |
-| ue5m3 + 4o6 + PZ + H |       4.91 |  -0.07 |  -0.02 |    0.07 |    0.21 |    0.35 |     0.57 |     1.05 |
-
-### Llama
-
-|                      |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |
-|:---------------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|
-| e4m3                 |       6.33 |   0.72 |   0.56 |    0.54 |    0.58 |    0.67 |     0.8  |     0.99 |
-| e4m3 + PZ            |       6.33 |   0.59 |   0.54 |    0.54 |    0.58 |    0.68 |     0.8  |     0.99 |
-| e4m3 + 4o6           |       6.33 |   0.27 |   0.33 |    0.42 |    0.53 |    0.66 |     0.8  |     0.99 |
-| e4m3 + 4o6 + PZ      |       6.33 |   0.25 |   0.32 |    0.42 |    0.53 |    0.66 |     0.8  |     0.99 |
-| ue5m3                |       6.33 |   0.2  |   0.31 |    0.44 |    0.54 |    0.66 |     0.78 |     1.01 |
-| ue5m3 + PZ           |       6.33 |   0.2  |   0.31 |    0.44 |    0.54 |    0.66 |     0.78 |     1.01 |
-| ue5m3 + 4o6          |       6.33 |   0.11 |   0.23 |    0.38 |    0.5  |    0.64 |     0.8  |     1    |
-| ue5m3 + 4o6 + PZ     |       6.33 |   0.11 |   0.23 |    0.38 |    0.5  |    0.64 |     0.8  |     1    |
-| e4m3 + H             |       6.33 |   0.21 |   0.32 |    0.42 |    0.53 |    0.65 |     0.79 |     0.99 |
-| e4m3 + PZ + H        |       6.33 |   0.2  |   0.31 |    0.43 |    0.53 |    0.64 |     0.79 |     0.98 |
-| e4m3 + 4o6 + H       |       6.33 |   0.12 |   0.23 |    0.37 |    0.49 |    0.64 |     0.8  |     0.99 |
-| e4m3 + 4o6 + PZ + H  |       6.33 |   0.12 |   0.23 |    0.36 |    0.49 |    0.62 |     0.8  |     0.99 |
-| ue5m3 + H            |       6.33 |   0.19 |   0.3  |    0.43 |    0.54 |    0.66 |     0.81 |     1    |
-| ue5m3 + PZ + H       |       6.33 |   0.19 |   0.3  |    0.43 |    0.54 |    0.66 |     0.81 |     1    |
-| ue5m3 + 4o6 + H      |       6.33 |   0.11 |   0.23 |    0.36 |    0.5  |    0.64 |     0.81 |     0.99 |
-| ue5m3 + 4o6 + PZ + H |       6.33 |   0.11 |   0.23 |    0.36 |    0.5  |    0.64 |     0.81 |     0.99 |
-
-### DeepSeek
-
-|                      |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |
-|:---------------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|
-| e4m3                 |      12.39 |   0.29 |   0.41 |    0.54 |    0.71 |    0.88 |     1.08 |     1.4  |
-| e4m3 + PZ            |      12.39 |   0.29 |   0.41 |    0.55 |    0.71 |    0.87 |     1.08 |     1.4  |
-| e4m3 + 4o6           |      12.39 |   0.14 |   0.27 |    0.43 |    0.61 |    0.82 |     1.08 |     1.38 |
-| e4m3 + 4o6 + PZ      |      12.39 |   0.14 |   0.27 |    0.42 |    0.62 |    0.83 |     1.08 |     1.38 |
-| ue5m3                |      12.39 |   0.2  |   0.37 |    0.53 |    0.71 |    0.86 |     1.1  |     1.41 |
-| ue5m3 + PZ           |      12.39 |   0.2  |   0.37 |    0.53 |    0.71 |    0.86 |     1.1  |     1.41 |
-| ue5m3 + 4o6          |      12.39 |   0.13 |   0.25 |    0.42 |    0.61 |    0.81 |     1.09 |     1.41 |
-| ue5m3 + 4o6 + PZ     |      12.39 |   0.12 |   0.25 |    0.42 |    0.61 |    0.81 |     1.09 |     1.41 |
-| e4m3 + H             |      12.39 |   0.21 |   0.38 |    0.54 |    0.7  |    0.84 |     1.08 |     1.39 |
-| e4m3 + PZ + H        |      12.39 |   0.2  |   0.37 |    0.54 |    0.7  |    0.83 |     1.08 |     1.39 |
-| e4m3 + 4o6 + H       |      12.39 |   0.11 |   0.27 |    0.45 |    0.64 |    0.81 |     1.06 |     1.39 |
-| e4m3 + 4o6 + PZ + H  |      12.39 |   0.11 |   0.26 |    0.45 |    0.62 |    0.81 |     1.06 |     1.39 |
-| ue5m3 + H            |      12.39 |   0.21 |   0.38 |    0.53 |    0.66 |    0.86 |     1.09 |     1.39 |
-| ue5m3 + PZ + H       |      12.39 |   0.21 |   0.38 |    0.53 |    0.66 |    0.86 |     1.09 |     1.39 |
-| ue5m3 + 4o6 + H      |      12.39 |   0.12 |   0.27 |    0.44 |    0.62 |    0.82 |     1.08 |     1.42 |
-| ue5m3 + 4o6 + PZ + H |      12.39 |   0.12 |   0.27 |    0.44 |    0.62 |    0.82 |     1.08 |     1.42 |
-
-### Qwen
-
-|                      |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |
-|:---------------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|
-| e4m3                 |       5.36 |   0.47 |   0.49 |    0.56 |    0.65 |    0.81 |     1.04 |     1.49 |
-| e4m3 + PZ            |       5.36 |   0.45 |   0.48 |    0.55 |    0.64 |    0.81 |     1.04 |     1.49 |
-| e4m3 + 4o6           |       5.36 |   0.27 |   0.36 |    0.47 |    0.61 |    0.78 |     1.04 |     1.47 |
-| e4m3 + 4o6 + PZ      |       5.36 |   0.26 |   0.35 |    0.47 |    0.61 |    0.79 |     1.03 |     1.48 |
-| ue5m3                |       5.36 |   0.28 |   0.4  |    0.51 |    0.64 |    0.79 |     1.06 |     1.51 |
-| ue5m3 + PZ           |       5.36 |   0.28 |   0.39 |    0.51 |    0.64 |    0.79 |     1.06 |     1.51 |
-| ue5m3 + 4o6          |       5.36 | nan    | nan    |  nan    |  nan    |    0.78 |     1.06 |     1.5  |
-| ue5m3 + 4o6 + PZ     |       5.36 |   0.2  |   0.32 |    0.45 |    0.6  |    0.78 |     1.06 |     1.5  |
-| e4m3 + H             |       5.36 |   0.31 |   0.41 |    0.52 |    0.64 |    0.8  |     1.03 |     1.48 |
-| e4m3 + PZ + H        |       5.36 |   0.3  |   0.41 |    0.51 |    0.63 |    0.79 |     1.03 |     1.48 |
-| e4m3 + 4o6 + H       |       5.36 |   0.19 |   0.33 |    0.46 |    0.61 |    0.79 |     1.03 |     1.47 |
-| e4m3 + 4o6 + PZ + H  |       5.36 |   0.19 |   0.33 |    0.46 |    0.6  |    0.79 |     1.04 |     1.48 |
-| ue5m3 + H            |       5.36 |   0.27 |   0.39 |    0.5  |    0.64 |    0.8  |     1.05 |     1.47 |
-| ue5m3 + PZ + H       |       5.36 |   0.27 |   0.39 |    0.5  |    0.64 |    0.8  |     1.05 |     1.47 |
-| ue5m3 + 4o6 + H      |       5.36 |   0.19 |   0.32 |    0.45 |    0.61 |    0.78 |     1.03 |     1.49 |
-| ue5m3 + 4o6 + PZ + H |       5.36 |   0.19 |   0.32 |    0.45 |    0.61 |    0.78 |     1.03 |     1.49 |
-
-### Perplexity Gap All Models
-![Perplexity Gap All Models](plots/gap_all_models.png)
-
-
-
 <!-- RESULTS_END -->
+
+## Notes for Next LLM Agent
+
+This repository evaluates the effect of **Hierarchical Scaling (+H)** on low-bit quantization (FP4/FP8) across four models: Granite-3.3-8B, Llama-3.1-8B, DeepSeek-LLM-7B-Base, and Qwen2.5-14B.
+
+### Current Status:
+- **Llama-3.1-8B** and **DeepSeek-LLM-7B-Base** are **100% complete** for all 16 configurations.
+*   **Granite** and **Qwen** were interrupted by a server restart and might be missing the last few points of the heavy `4over6` configurations.
+- All raw CSV results are stored in the `results/` directory.
+- The combined results file is `results/results.csv`.
+
+### Useful Scripts:
+- `run_model_all_configs.sh`: Runs the evaluation sweep. It has been updated to run ONLY the new 8 `+ H` configurations to avoid re-running base configs.
+- `cleanup_and_plot.py`: Aggregates all `results_*.csv` files from the `results/` directory into `results/results.csv`, cleans duplicates, and updates the README tables and plots.
+- `create_final_figure.py`: Generates the final 2x3 publication figure combining perplexity gaps and weight/activation distributions for Granite and Qwen.
+
+### Next Steps:
+1.  Check `results/results.csv` for any remaining `NaN` values.
+2.  Resume runs for missing points if necessary.
+3.  Run `create_final_figure.py` to regenerate the consolidated figure once all data is in.
+

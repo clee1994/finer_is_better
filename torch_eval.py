@@ -156,8 +156,8 @@ class TorchMXLinear(nn.Linear):
         q_input, _, _, _ = FP4_quant_torch(input, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical)
         return F.linear(q_input, q_weight, self.bias)
 
-def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, use_ue5m3=False, num_steps=None):
-    print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, use_ue5m3={use_ue5m3}, num_steps={num_steps}")
+def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, use_ue5m3=False, num_steps=None, use_hierarchical=False):
+    print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, use_ue5m3={use_ue5m3}, num_steps={num_steps}, use_hierarchical={use_hierarchical}")
     
     tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16, trust_remote_code=True).to("cuda")
@@ -185,7 +185,7 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, 
                          father_module = getattr(father_module, part)
                 
                 idx = idx + 1 if idx != 0 else idx
-                new_m = TorchMXLinear(module.in_features, module.out_features, module.bias is not None, block_size=block_size, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3)
+                new_m = TorchMXLinear(module.in_features, module.out_features, module.bias is not None, block_size=block_size, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3, use_hierarchical=use_hierarchical)
                 new_m.weight.data = module.weight.data
                 new_m.bias = module.bias
                 print(f"Replacing layer: {name}")
@@ -299,10 +299,14 @@ if __name__ == "__main__":
             four_over_six = sys.argv[4].lower() == "true"
         if len(sys.argv) > 5:
             use_ue5m3 = sys.argv[5].lower() == "true"
-        if len(sys.argv) > 6 and sys.argv[6].lower() != "none":
-            num_steps = int(sys.argv[6])
-        if len(sys.argv) > 7:
-            csv_suffix = sys.argv[7]
+            
+        use_hierarchical = False
+        if len(sys.argv) > 6:
+            use_hierarchical = sys.argv[6].lower() == "true"
+        if len(sys.argv) > 7 and sys.argv[7].lower() != "none":
+            num_steps = int(sys.argv[7])
+        if len(sys.argv) > 8:
+            csv_suffix = sys.argv[8]
             
         if not prevent_zero and not four_over_six and not use_ue5m3:
             option = "e4m3"
@@ -312,6 +316,8 @@ if __name__ == "__main__":
             option = "e4m3 + 4o6"
         elif prevent_zero and four_over_six and not use_ue5m3:
             option = "e4m3 + 4o6 + PZ"
+        elif not prevent_zero and not four_over_six and use_ue5m3:
+            option = "ue5m3"
         elif prevent_zero and not four_over_six and use_ue5m3:
             option = "ue5m3 + PZ"
         elif not prevent_zero and four_over_six and use_ue5m3:
@@ -321,13 +327,16 @@ if __name__ == "__main__":
         else:
             option = "ue5m3_unknown"
             
+        if use_hierarchical:
+            option += " + H"
+            
         if block_sizes == [None]:
             base_ppl = None
         else:
             base_ppl = read_base_from_csv(model_id)
         
         for bs in block_sizes:
-            ppl = run_eval(model_id, bs, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3, num_steps=num_steps)
+            ppl = run_eval(model_id, bs, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3, num_steps=num_steps, use_hierarchical=use_hierarchical)
             if base_ppl is None and bs is not None:
                 print(f"Baseline not found for {model_id}. Please run it first.")
                 continue
