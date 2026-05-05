@@ -89,7 +89,17 @@ This section is automatically updated by the evaluation script after each run. D
 
 <!-- RESULTS_START -->
 
-### Granite
+### Consolidated Experimental Figures
+
+#### Publication Final 2x3 Consolidated Figure (Perplexity & Distributions)
+![Publication Final Figure](plots/final_figure.png)
+
+#### Perplexity Scaling Gaps across Block Sizes
+![Perplexity Gap All Models](plots/gap_all_models.png)
+
+### Detailed Evaluation Perplexity Matrices
+
+#### Granite
 
 | Model_Config | Baseline | BS=4 | BS=8 | BS=16 | BS=32 | BS=64 | BS=128 | BS=256 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -110,7 +120,7 @@ This section is automatically updated by the evaluation script after each run. D
 | ue5m3 + 4o6 + H | +4.91 | -0.07 | -0.02 | +0.07 | +0.21 | +0.35 | +0.57 | +1.05 |
 | ue5m3 + 4o6 + PZ + H | +4.91 | -0.07 | -0.02 | +0.07 | +0.21 | +0.35 | +0.57 | +1.05 |
 
-### Llama
+#### Llama
 
 | Model_Config | Baseline | BS=4 | BS=8 | BS=16 | BS=32 | BS=64 | BS=128 | BS=256 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -131,7 +141,7 @@ This section is automatically updated by the evaluation script after each run. D
 | ue5m3 + 4o6 + H | +6.33 | +0.11 | +0.23 | +0.36 | +0.50 | +0.64 | +0.81 | +0.99 |
 | ue5m3 + 4o6 + PZ + H | +6.33 | +0.11 | +0.23 | +0.36 | +0.50 | +0.64 | +0.81 | +0.99 |
 
-### DeepSeek
+#### DeepSeek
 
 | Model_Config | Baseline | BS=4 | BS=8 | BS=16 | BS=32 | BS=64 | BS=128 | BS=256 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -152,7 +162,7 @@ This section is automatically updated by the evaluation script after each run. D
 | ue5m3 + 4o6 + H | +12.39 | +0.12 | +0.27 | +0.44 | +0.62 | +0.82 | +1.08 | +1.42 |
 | ue5m3 + 4o6 + PZ + H | +12.39 | +0.12 | +0.27 | +0.44 | +0.62 | +0.82 | +1.08 | +1.42 |
 
-### Qwen
+#### Qwen
 
 | Model_Config | Baseline | BS=4 | BS=8 | BS=16 | BS=32 | BS=64 | BS=128 | BS=256 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -173,30 +183,7 @@ This section is automatically updated by the evaluation script after each run. D
 | ue5m3 + 4o6 + H | +5.36 | +0.19 | +0.32 | +0.45 | +0.61 | +0.78 | +1.03 | +1.49 |
 | ue5m3 + 4o6 + PZ + H | +5.36 | +0.19 | +0.32 | +0.45 | +0.61 | +0.78 | +1.03 | +1.49 |
 
-### Perplexity Gap All Models
-![Perplexity Gap All Models](plots/gap_all_models.png)
-
 
 
 <!-- RESULTS_END -->
-
-## Notes for Next LLM Agent
-
-This repository evaluates the effect of **Hierarchical Scaling (+H)** on low-bit quantization (FP4/FP8) across four models: Granite-3.3-8B, Llama-3.1-8B, DeepSeek-LLM-7B-Base, and Qwen2.5-14B.
-
-### Current Status:
-- **Llama-3.1-8B** and **DeepSeek-LLM-7B-Base** are **100% complete** for all 16 configurations.
-*   **Granite** and **Qwen** were interrupted by a server restart and might be missing the last few points of the heavy `4over6` configurations.
-- All raw CSV results are stored in the `results/` directory.
-- The combined results file is `results/results.csv`.
-
-### Useful Scripts:
-- `run_model_all_configs.sh`: Runs the evaluation sweep. It has been updated to run ONLY the new 8 `+ H` configurations to avoid re-running base configs.
-- `cleanup_and_plot.py`: Aggregates all `results_*.csv` files from the `results/` directory into `results/results.csv`, cleans duplicates, and updates the README tables and plots.
-- `create_final_figure.py`: Generates the final 2x3 publication figure combining perplexity gaps and weight/activation distributions for Granite and Qwen.
-
-### Next Steps:
-1.  Check `results/results.csv` for any remaining `NaN` values.
-2.  Resume runs for missing points if necessary.
-3.  Run `create_final_figure.py` to regenerate the consolidated figure once all data is in.
 
