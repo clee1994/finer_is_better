@@ -1,8 +1,12 @@
 # Finer is Better: NVFP4 Quantization Evaluation
 
-This directory contains our consolidated codebase for evaluating baseline perplexity and custom NVFP4 quantization with microscaling on large language models, intended to reproduce findings from paper 2601.19026.
+## Abstract
 
-This file is intended to be fully self-explanatory. Follow the steps below to set up the environment and run experiments.
+Microscaling is a critical technique for preserving the quality of Large Language Models (LLMs) quantized to ultra-low precision formats. Intuitively, finer block sizes should yield lower quantization error; however, a counter-intuitive paradox recently identified in the literature demonstrates that standard abs-max scaling can actually degrade model quality as block sizes shrink [[Fasoli et al., 2026](https://arxiv.org/abs/2601.19026)]. In this work, we investigate the underlying mechanics of this phenomenon. We demonstrate that this degradation is not an inherent limitation of finer granularity, but is primarily driven by heavy-tailed tensor distributions interacting poorly with the coarse upper quantization bins of the FP4 element format. Specifically, we show that i) preventing the scaling factor from underflowing to zero mitigates localized errors, ii) targeted algorithmic interventions like the 4-over-6 methodology [[Cook et al., 2025](https://arxiv.org/abs/2502.04066)] effectively correct the quantization geometry for large elements, and iii) a brute-force search establishes an optimal baseline, confirming that the theoretical Mean Squared Error (MSE) strictly improves with finer block sizes. Ultimately, our findings reveal a valuable interchangeability: applying the correct algorithmic recipe allows standard, hardware-compliant formats (like OCP E4M3) to match the performance of custom, wider-exponent formats (like UE5M3). We validate these results across several large language models, fully resolving the scaling paradox and achieving robust downstream perplexity improvements.
+
+*Our full paper findings are available on arXiv: [[Schaefer et al., 2026](https://arxiv.org/abs/XXXX.XXXXX)].*
+
+This directory contains our consolidated codebase for evaluating baseline perplexity and custom NVFP4 quantization with microscaling on large language models. This file is intended to be fully self-explanatory. Follow the steps below to set up the environment and run experiments.
 
 ## Setup
 
