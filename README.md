@@ -94,9 +94,6 @@ This section is automatically updated by the evaluation script after each run. D
 #### Publication Final 2x3 Consolidated Figure (Perplexity & Distributions)
 ![Publication Final Figure](plots/final_figure.png)
 
-#### Perplexity Scaling Gaps across Block Sizes
-![Perplexity Gap All Models](plots/gap_all_models.png)
-
 ### Detailed Evaluation Perplexity Matrices
 
 #### Granite
