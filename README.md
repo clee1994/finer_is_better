@@ -63,18 +63,6 @@ We have implemented several custom modifications to the standard FP4 quantizatio
 3.  **UE5M3**: Uses a custom unsigned 8-bit floating point format for scales with 5 exponent bits and 3 mantissa bits, allowing a wider range than standard FP8.
     *   **Activation**: Pass `true` as the 5th argument (default: `false`).
 
-## Distribution Analysis
-
-To understand why certain models (like Qwen) are sensitive to quantization, we extracted the weight and activation distributions for several layers and plotted them as log-scale overlapping histograms (Ridge Plots).
-
-### Qwen vs Granite Distributions
-
-<table>
-  <tr>
-    <td><img src="plots/qwen_vs_granite_weights.png" alt="Weights Contrast" width="400"><p align="center">Weights Contrast</p></td>
-    <td><img src="plots/qwen_vs_granite_acts.png" alt="Activations Contrast" width="400"><p align="center">Activations Contrast</p></td>
-  </tr>
-</table>
 
 ## Running Tests
 
