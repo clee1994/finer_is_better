@@ -80,7 +80,7 @@ This section is automatically updated by the evaluation script after each run. D
 ### Consolidated Experimental Figures
 
 #### Publication Final 2x3 Consolidated Figure (Perplexity & Distributions)
-![Publication Final Figure](plots/final_figure.png)
+![Publication Final Figure](plots/final_fig.png)
 
 ### Detailed Evaluation Perplexity Matrices
 
