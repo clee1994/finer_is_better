@@ -159,7 +159,7 @@ def plot_heatmap(matrix_df, model_name, ax):
     ax.set_ylabel("Lower Threshold (B)", fontweight='bold')
     ax.set_xlabel("Upper Threshold (A)", fontweight='bold')
 
-def run_ablation_heatmap_sweep(num_steps=None):
+def run_ablation_heatmap_sweep(num_steps=None, target_model=None):
     apply_style()
     
     models = {
@@ -167,13 +167,22 @@ def run_ablation_heatmap_sweep(num_steps=None):
         "Qwen2.5-14B": "Qwen/Qwen2.5-14B"
     }
     
+    if target_model is not None and target_model in models:
+        models = {target_model: models[target_model]}
+        print(f"Filtering sweep strictly for target model: {target_model}")
+        
     t_abs = [0.0, 0.003, 0.01, 0.05, 10000.0]
     labels = ["0.0", "0.003", "0.01", "0.05", "inf"]
     
     os.makedirs("results", exist_ok=True)
     os.makedirs("plots", exist_ok=True)
     
-    fig, axes = plt.subplots(1, 2, figsize=(20, 8))
+    # Adjust subplot layout dynamically depending on number of models being evaluated
+    num_models = len(models)
+    fig, axes = plt.subplots(1, num_models, figsize=(10 * num_models, 8))
+    if num_models == 1:
+        axes = [axes]
+        
     all_records = []
     
     for idx, (name, model_id) in enumerate(models.items()):
@@ -208,11 +217,13 @@ def run_ablation_heatmap_sweep(num_steps=None):
         plot_heatmap(matrix, name, axes[idx])
         
     plt.tight_layout()
-    plt.savefig("plots/zone_ablation_heatmap.png", bbox_inches='tight')
-    print("\nSuccessfully generated full heatmap plots at plots/zone_ablation_heatmap.png")
+    out_img = f"plots/zone_ablation_heatmap_{target_model}.png" if target_model is not None else "plots/zone_ablation_heatmap.png"
+    plt.savefig(out_img, bbox_inches='tight')
+    print(f"\nSuccessfully generated heatmap plot at {out_img}")
     
     df = pd.DataFrame(all_records)
-    df.to_csv("results/zone_ablation_records.csv", index=False)
+    out_csv = f"results/zone_ablation_records_{target_model}.csv" if target_model is not None else "results/zone_ablation_records.csv"
+    df.to_csv(out_csv, index=False)
 
 def test_ablation_module():
     print("Running local test on ZoneAblationLinear module...")
@@ -233,7 +244,16 @@ if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "test":
         test_ablation_module()
     elif len(sys.argv) > 1 and sys.argv[1] == "sweep":
-        steps = int(sys.argv[2]) if len(sys.argv) > 2 else None
-        run_ablation_heatmap_sweep(num_steps=steps)
+        steps = None
+        t_model = None
+        if len(sys.argv) > 2:
+            try:
+                steps = int(sys.argv[2])
+            except ValueError:
+                t_model = sys.argv[2]
+        if len(sys.argv) > 3:
+            t_model = sys.argv[3]
+            
+        run_ablation_heatmap_sweep(num_steps=steps, target_model=t_model)
     else:
-        print("Usage:\n  python3 zone_ablation_eval.py test\n  python3 zone_ablation_eval.py sweep [num_steps]")
+        print("Usage:\n  python3 zone_ablation_eval.py test\n  python3 zone_ablation_eval.py sweep [num_steps] [target_model]")
