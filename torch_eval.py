@@ -143,21 +143,35 @@ def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_u
     return dequant.to(x.dtype), quant.reshape(init_shape), scaling_factor, use_4
 
 class TorchMXLinear(nn.Linear):
-    def __init__(self, in_features, out_features, bias=True, block_size=32, prevent_zero=True, four_over_six=False, use_ue5m3=False, use_hierarchical=False):
+    def __init__(self, in_features, out_features, bias=True, block_size=32, prevent_zero=True, four_over_six=False, use_ue5m3=False, use_hierarchical=False, ablation_mode=False, b_thresh=0.0, a_thresh=0.0):
         super().__init__(in_features, out_features, bias)
         self.block_size = block_size
         self.prevent_zero = prevent_zero
         self.four_over_six = four_over_six
         self.use_ue5m3 = use_ue5m3
         self.use_hierarchical = use_hierarchical
+        self.ablation_mode = ablation_mode
+        self.b_thresh = b_thresh
+        self.a_thresh = a_thresh
         
     def forward(self, input):
-        q_weight, _, _, _ = FP4_quant_torch(self.weight, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical)
-        q_input, _, _, _ = FP4_quant_torch(input, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical)
-        return F.linear(q_input, q_weight, self.bias)
+        if self.ablation_mode:
+            w_abs = torch.abs(self.weight)
+            w_mask = (w_abs >= self.b_thresh) & (w_abs <= self.a_thresh)
+            masked_weight = torch.where(w_mask, torch.zeros_like(self.weight), self.weight)
+            
+            i_abs = torch.abs(input)
+            i_mask = (i_abs >= self.b_thresh) & (i_abs <= self.a_thresh)
+            masked_input = torch.where(i_mask, torch.zeros_like(input), input)
+            
+            return F.linear(masked_input, masked_weight, self.bias)
+        else:
+            q_weight, _, _, _ = FP4_quant_torch(self.weight, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical)
+            q_input, _, _, _ = FP4_quant_torch(input, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical)
+            return F.linear(q_input, q_weight, self.bias)
 
-def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, use_ue5m3=False, num_steps=None, use_hierarchical=False):
-    print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, use_ue5m3={use_ue5m3}, num_steps={num_steps}, use_hierarchical={use_hierarchical}")
+def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, use_ue5m3=False, num_steps=None, use_hierarchical=False, ablation_mode=False, b_thresh=0.0, a_thresh=0.0):
+    print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, use_ue5m3={use_ue5m3}, num_steps={num_steps}, use_hierarchical={use_hierarchical}, ablation_mode={ablation_mode}, b_thresh={b_thresh}, a_thresh={a_thresh}")
     
     tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16, trust_remote_code=True).to("cuda")
@@ -185,7 +199,7 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, 
                          father_module = getattr(father_module, part)
                 
                 idx = idx + 1 if idx != 0 else idx
-                new_m = TorchMXLinear(module.in_features, module.out_features, module.bias is not None, block_size=block_size, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3, use_hierarchical=use_hierarchical)
+                new_m = TorchMXLinear(module.in_features, module.out_features, module.bias is not None, block_size=block_size, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3, use_hierarchical=use_hierarchical, ablation_mode=ablation_mode, b_thresh=b_thresh, a_thresh=a_thresh)
                 new_m.weight.data = module.weight.data
                 new_m.bias = module.bias
                 print(f"Replacing layer: {name}")
@@ -281,7 +295,43 @@ if __name__ == "__main__":
                     return float(df.loc[idx, "Baseline"])
         return None
         
-    if len(sys.argv) > 2:
+    if len(sys.argv) > 2 and sys.argv[2].lower() == "ablation":
+        b_thresh = float(sys.argv[3])
+        a_thresh = float(sys.argv[4])
+        num_steps = int(sys.argv[5]) if len(sys.argv) > 5 and sys.argv[5].lower() != "none" else None
+        csv_suffix = sys.argv[6] if len(sys.argv) > 6 else ""
+        
+        base_ppl = read_base_from_csv(model_id)
+        if base_ppl is None:
+            print(f"Baseline not found for {model_id}. Establishing dynamically...")
+            base_ppl = run_eval(model_id, None, num_steps=num_steps)
+            
+        ppl = run_eval(model_id, block_size=1, ablation_mode=True, b_thresh=b_thresh, a_thresh=a_thresh, num_steps=num_steps)
+        gap = ppl - base_ppl
+        
+        disp_name = model_id
+        for k, v in {"granite": "Granite", "llama": "Llama", "qwen": "Qwen", "deepseek": "DeepSeek"}.items():
+            if k in model_id.lower():
+                disp_name = v
+                break
+                
+        path_csv = f"results/ablation_heatmap_{disp_name}{csv_suffix}.csv"
+        os.makedirs("results", exist_ok=True)
+        
+        t_abs = ["0.0", "0.003", "0.01", "0.05", "inf"]
+        if os.path.exists(path_csv):
+            df = pd.read_csv(path_csv, index_col=0)
+        else:
+            df = pd.DataFrame(np.nan, index=t_abs[:-1], columns=t_abs[1:])
+            df.index.name = "B_Thresh"
+            
+        b_lbl = "0.0" if b_thresh == 0.0 else ("inf" if b_thresh == 10000.0 else str(b_thresh))
+        a_lbl = "0.0" if a_thresh == 0.0 else ("inf" if a_thresh == 10000.0 else str(a_thresh))
+        
+        df.loc[b_lbl, a_lbl] = gap
+        df.to_csv(path_csv)
+        print(f"Successfully recorded ablation gap {gap:.4f} to {path_csv}")
+    elif len(sys.argv) > 2:
         if sys.argv[2].lower() == "none" or sys.argv[2] == "":
             block_sizes = [None]
         else:
