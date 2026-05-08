@@ -8,6 +8,7 @@ from tqdm import tqdm
 import pandas as pd
 import subprocess
 import os
+import numpy as np
 
 _UE5M3_GRID = None
 _UE5M3_TH = None
@@ -318,15 +319,15 @@ if __name__ == "__main__":
         path_csv = f"results/ablation_heatmap_{disp_name}{csv_suffix}.csv"
         os.makedirs("results", exist_ok=True)
         
-        t_abs = ["0.0", "0.003", "0.01", "0.05", "inf"]
+        t_abs = ["0.0", "0.0001", "0.0002", "0.0003", "0.0005", "0.0007", "0.001", "0.0015", "0.002", "0.003", "0.004", "0.005", "0.006", "0.007", "0.008", "0.01", "0.012", "0.016", "0.024", "0.035"]
         if os.path.exists(path_csv):
             df = pd.read_csv(path_csv, index_col=0)
         else:
             df = pd.DataFrame(np.nan, index=t_abs[:-1], columns=t_abs[1:])
             df.index.name = "B_Thresh"
             
-        b_lbl = "0.0" if b_thresh == 0.0 else ("inf" if b_thresh == 10000.0 else str(b_thresh))
-        a_lbl = "0.0" if a_thresh == 0.0 else ("inf" if a_thresh == 10000.0 else str(a_thresh))
+        b_lbl = "0.0" if b_thresh == 0.0 else str(b_thresh)
+        a_lbl = "0.0" if a_thresh == 0.0 else str(a_thresh)
         
         df.loc[b_lbl, a_lbl] = gap
         df.to_csv(path_csv)
