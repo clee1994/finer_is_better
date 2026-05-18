@@ -347,6 +347,36 @@ def test_torch_mx_linear_pipeline():
     
     print("Case 15 passed!")
 
+def test_generate_float_grid():
+    print("\n--- Test Case 16: Verify generate_float_grid with Known Formats ---")
+    from torch_eval import get_element_format_grid
+
+    # Test e2m1 (Standard OCP MXFP4 element grid)
+    grid_e2m1, _, max_e2m1 = get_element_format_grid("e2m1")
+    expected_e2m1 = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0], device=grid_e2m1.device)
+    assert torch.allclose(grid_e2m1, expected_e2m1), f"e2m1 grid mismatch! Got {grid_e2m1}"
+    assert max_e2m1 == 6.0, f"e2m1 max mismatch! Got {max_e2m1}"
+    print("e2m1 grid verified!")
+
+    # Test e1m2 (Alternative FP4 format element grid)
+    grid_e1m2, _, max_e1m2 = get_element_format_grid("e1m2")
+    expected_e1m2 = torch.tensor([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], device=grid_e1m2.device)
+    assert torch.allclose(grid_e1m2, expected_e1m2), f"e1m2 grid mismatch! Got {grid_e1m2}"
+    assert max_e1m2 == 7.0, f"e1m2 max mismatch! Got {max_e1m2}"
+    print("e1m2 grid verified!")
+
+    # Test e4m3 (Standard OCP FP8 scale format)
+    _, _, max_e4m3 = get_element_format_grid("e4m3")
+    assert max_e4m3 == 240.0, f"e4m3 max mismatch! Got {max_e4m3}, expected 240.0"
+    print("e4m3 max value verified!")
+
+    # Test ue5m3 (Standard UE5M3 scale format)
+    _, _, max_ue5m3 = get_element_format_grid("ue5m3")
+    assert max_ue5m3 == 61440.0, f"ue5m3 max mismatch! Got {max_ue5m3}, expected 61440.0"
+    print("ue5m3 max value verified!")
+
+    print("Case 16 passed!")
+
 if __name__ == "__main__":
     test_torch_quant()
     test_against_jax()
@@ -362,3 +392,4 @@ if __name__ == "__main__":
     test_hadamard_seeding_consistency()
     test_mxfp4_grid_snapping()
     test_torch_mx_linear_pipeline()
+    test_generate_float_grid()
