@@ -126,9 +126,8 @@ def quantize_scale_simulate(val, format="e4m3", prevent_zero=True, rounding="rou
         
     return quant.reshape(val.shape)
 
-def quantize_fp8_simulate(val, prevent_zero=True, use_ue5m3=False):
-    fmt = "ue5m3" if use_ue5m3 else "e4m3"
-    return quantize_scale_simulate(val, format=fmt, prevent_zero=prevent_zero, rounding="round")
+def quantize_fp8_simulate(val, prevent_zero=True, format="e4m3"):
+    return quantize_scale_simulate(val, format=format, prevent_zero=prevent_zero, rounding="round")
 
 # -------------------------------------------------------------------------
 # MXFP4 and Hadamard Transform Logic
@@ -286,27 +285,19 @@ def quantize_mx_torch(x, block_size, elem_format="e2m1", scale_format="e4m3", pr
         
     return dequant.to(x.dtype), quant.reshape(init_shape), scaling_factor, use_4
 
-def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_ue5m3=False, use_hierarchical=False, use_mxfp4=False, format="e2m1"):
-    scale_fmt = "e8m0" if use_mxfp4 else ("ue5m3" if use_ue5m3 else "e4m3")
-    return quantize_mx_torch(x, block_size, elem_format=format, scale_format=scale_fmt, prevent_zero=prevent_zero, four_over_six=four_over_six, use_hierarchical=use_hierarchical)
+def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_hierarchical=False, scale_format="e4m3", format="e2m1"):
+    return quantize_mx_torch(x, block_size, elem_format=format, scale_format=scale_format, prevent_zero=prevent_zero, four_over_six=four_over_six, use_hierarchical=use_hierarchical)
 
 class TorchMXLinear(nn.Linear):
     def __init__(self, in_features, out_features, bias=True, block_size=32, prevent_zero=True, four_over_six=False,
-                 elem_format=None, scale_format=None, use_hierarchical=False, hadamard_size=0, hadamard_seed=42,
-                 # legacy parameters for backwards compatibility
-                 use_ue5m3=False, use_mxfp4=False, format="e2m1"):
+                 elem_format="e2m1", scale_format="e4m3", use_hierarchical=False, hadamard_size=0, hadamard_seed=42):
         super().__init__(in_features, out_features, bias)
         self.block_size = block_size
         self.prevent_zero = prevent_zero
         self.four_over_six = four_over_six
         self.use_hierarchical = use_hierarchical
-        
-        # Resolve formats cleanly
-        self.elem_format = elem_format if elem_format is not None else format
-        if scale_format is not None:
-            self.scale_format = scale_format
-        else:
-            self.scale_format = "e8m0" if use_mxfp4 else ("ue5m3" if use_ue5m3 else "e4m3")
+        self.elem_format = elem_format
+        self.scale_format = scale_format
             
         self.hadamard_size = hadamard_size
         self.hadamard_seed = hadamard_seed
@@ -326,19 +317,10 @@ class TorchMXLinear(nn.Linear):
         return F.linear(q_input, q_weight, self.bias)
 
 def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
-             elem_format=None, scale_format=None, num_steps=None, use_hierarchical=False,
-             hadamard_size=0, hadamard_seed=42,
-             # legacy parameters for backwards compatibility
-             use_ue5m3=False, use_mxfp4=False, format="e2m1"):
+             elem_format="e2m1", scale_format="e4m3", num_steps=None, use_hierarchical=False,
+             hadamard_size=0, hadamard_seed=42):
     
-    # Resolve formats cleanly
-    resolved_elem_format = elem_format if elem_format is not None else format
-    if scale_format is not None:
-        resolved_scale_format = scale_format
-    else:
-        resolved_scale_format = "e8m0" if use_mxfp4 else ("ue5m3" if use_ue5m3 else "e4m3")
-        
-    print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, elem_format={resolved_elem_format}, scale_format={resolved_scale_format}, num_steps={num_steps}, use_hierarchical={use_hierarchical}, hadamard_size={hadamard_size}, hadamard_seed={hadamard_seed}")
+    print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, elem_format={elem_format}, scale_format={scale_format}, num_steps={num_steps}, use_hierarchical={use_hierarchical}, hadamard_size={hadamard_size}, hadamard_seed={hadamard_seed}")
     
     tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16, trust_remote_code=True).to("cuda")
@@ -369,7 +351,7 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
                 new_m = TorchMXLinear(
                     module.in_features, module.out_features, module.bias is not None,
                     block_size=block_size, prevent_zero=prevent_zero, four_over_six=four_over_six,
-                    elem_format=resolved_elem_format, scale_format=resolved_scale_format,
+                    elem_format=elem_format, scale_format=scale_format,
                     use_hierarchical=use_hierarchical, hadamard_size=hadamard_size, hadamard_seed=hadamard_seed
                 )
                 new_m.weight.data = module.weight.data
@@ -475,11 +457,10 @@ if __name__ == "__main__":
             
         prevent_zero = True
         four_over_six = False
-        use_ue5m3 = False
+        scale_format = "e4m3"
+        use_hierarchical = False
         num_steps = None
         csv_suffix = ""
-        use_hierarchical = False
-        use_mxfp4 = False
         format = "e2m1"
         hadamard_size = 0
         hadamard_seed = 42
@@ -489,7 +470,13 @@ if __name__ == "__main__":
         if len(sys.argv) > 4:
             four_over_six = sys.argv[4].lower() == "true"
         if len(sys.argv) > 5:
-            use_ue5m3 = sys.argv[5].lower() == "true"
+            val = sys.argv[5]
+            if val.lower() == "true":
+                scale_format = "ue5m3"
+            elif val.lower() == "false":
+                scale_format = "e4m3"
+            else:
+                scale_format = val
         if len(sys.argv) > 6:
             use_hierarchical = sys.argv[6].lower() == "true"
         if len(sys.argv) > 7 and sys.argv[7].lower() != "none":
@@ -497,7 +484,8 @@ if __name__ == "__main__":
         if len(sys.argv) > 8:
             csv_suffix = sys.argv[8]
         if len(sys.argv) > 9:
-            use_mxfp4 = sys.argv[9].lower() == "true"
+            if sys.argv[9].lower() == "true":
+                scale_format = "e8m0"
         if len(sys.argv) > 10:
             format = sys.argv[10]
         if len(sys.argv) > 11 and sys.argv[11].lower() != "none":
@@ -506,7 +494,6 @@ if __name__ == "__main__":
             hadamard_seed = int(sys.argv[12])
             
         elem_format = format
-        scale_format = "e8m0" if use_mxfp4 else ("ue5m3" if use_ue5m3 else "e4m3")
             
         if scale_format == "e8m0":
             option = f"mxfp4 ({elem_format})"
