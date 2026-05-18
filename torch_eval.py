@@ -8,6 +8,9 @@ from tqdm import tqdm
 import pandas as pd
 import subprocess
 import os
+import numpy as np
+import scipy.linalg
+
 
 _UE5M3_GRID = None
 _UE5M3_TH = None
@@ -48,6 +51,130 @@ def quantize_fp8_simulate(val, prevent_zero=True, use_ue5m3=False):
         quant = torch.where(quant == 0.0, min_scale, quant)
     
     return quant.reshape(val.shape)
+
+# -------------------------------------------------------------------------
+# MXFP4 and Hadamard Transform Logic
+# -------------------------------------------------------------------------
+def get_hadamard_matrix(n, device="cuda", dtype=torch.float32):
+    if n < 1 or (n & (n - 1) != 0):
+        raise ValueError("n must be a power of 2.")
+    had = scipy.linalg.hadamard(n)
+    return torch.tensor(had, device=device, dtype=dtype)
+
+def apply_hadamard_torch(mat, had_mat, is_lhs, apply_scale=True):
+    h = had_mat.shape[0]
+    init_shape = mat.shape
+    if is_lhs:
+        # Mat is (..., K). Reshape to 2D: (N, K)
+        mat_2d = mat.reshape(-1, init_shape[-1])
+        d0, d1 = mat_2d.shape
+        mat_reshaped = mat_2d.reshape(d0, d1 // h, h)
+        res_reshaped = torch.matmul(mat_reshaped, had_mat)
+        res = res_reshaped.reshape(init_shape)
+    else:
+        # Mat is (K, Out)
+        d0, d1 = mat.shape
+        mat_reshaped = mat.reshape(d0 // h, h, d1)
+        res_reshaped = torch.matmul(had_mat.unsqueeze(0), mat_reshaped)
+        res = res_reshaped.reshape(init_shape)
+        
+    if apply_scale:
+        res = res / np.sqrt(h)
+    return res
+
+def had_mod_torch(x, w, had_size=256, seed=42):
+    device = x.device
+    dtype = x.dtype
+    had_mat = get_hadamard_matrix(had_size, device=device, dtype=torch.float32)
+    
+    if seed is not None:
+        g = torch.Generator(device=device)
+        g.manual_seed(seed)
+        
+        d1 = torch.randint(0, 2, (had_size,), generator=g, device=device).float() * 2.0 - 1.0
+        d2 = torch.randint(0, 2, (had_size,), generator=g, device=device).float() * 2.0 - 1.0
+        
+        d1_mat = torch.diag(d1)
+        d2_mat = torch.diag(d2)
+        had_mat = d1_mat @ had_mat @ d2_mat
+        
+    x_had = apply_hadamard_torch(x.float(), had_mat, is_lhs=True, apply_scale=True).to(dtype)
+    w_had = apply_hadamard_torch(w.float(), had_mat, is_lhs=True, apply_scale=True).to(dtype)
+    
+    return x_had, w_had
+
+def quantize_mxfp4_torch(x, block_size, format="e2m1", four_over_six=False, use_hierarchical=False):
+    init_shape = x.shape
+    
+    if use_hierarchical:
+        # Compute per-channel scale
+        axes = list(range(len(x.shape)))
+        axes.remove(0)
+        max_channel = torch.amax(torch.abs(x), dim=axes, keepdim=True)
+        channel_scale = torch.where(max_channel != 0, max_channel / 6.0, torch.ones_like(max_channel))
+        x_norm = x / channel_scale
+    else:
+        x_norm = x
+        
+    x_reshaped = x_norm.reshape(-1, block_size)
+    
+    if format == "e2m1":
+        grid = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0], dtype=torch.float32, device=x.device)
+        max_rep = 6.0
+    elif format == "e1m2":
+        grid = torch.tensor([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], dtype=torch.float32, device=x.device)
+        max_rep = 7.0
+    else:
+        raise ValueError(f"Unknown FP4 format: {format}")
+        
+    def snap_to_grid(val):
+        abs_val = torch.abs(val)
+        dists = torch.abs(abs_val.unsqueeze(-1) - grid)
+        idx = torch.argmin(dists, dim=-1)
+        return grid[idx] * torch.sign(val)
+
+    if not four_over_six:
+        max_abs = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
+        max_abs = torch.clamp(max_abs, min=1e-7)
+        
+        # E8M0 exponent (power-of-two micro scale factor)
+        log2_scale = torch.ceil(torch.log2(max_abs / max_rep))
+        scale = 2.0 ** log2_scale
+        
+        scaled = x_reshaped / scale
+        quant = snap_to_grid(scaled)
+        dequant = quant * scale
+    else:
+        # Floor / Ceil scale selections
+        max_abs = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
+        max_abs = torch.clamp(max_abs, min=1e-7)
+        
+        ideal_log = torch.log2(max_abs / max_rep)
+        exp_floor = torch.floor(ideal_log)
+        exp_ceil = torch.ceil(ideal_log)
+        
+        scale_4 = 2.0 ** exp_floor
+        scale_6 = 2.0 ** exp_ceil
+        
+        scaled_4 = x_reshaped / scale_4
+        quant_4 = snap_to_grid(scaled_4)
+        dequant_4 = quant_4 * scale_4
+        
+        scaled_6 = x_reshaped / scale_6
+        quant_6 = snap_to_grid(scaled_6)
+        dequant_6 = quant_6 * scale_6
+        
+        mse_4 = torch.mean((x_reshaped - dequant_4)**2, dim=-1, keepdim=True)
+        mse_6 = torch.mean((x_reshaped - dequant_6)**2, dim=-1, keepdim=True)
+        
+        use_4 = mse_4 < mse_6
+        dequant = torch.where(use_4, dequant_4, dequant_6)
+        
+    dequant = dequant.reshape(init_shape)
+    if use_hierarchical:
+        dequant = dequant * channel_scale
+        
+    return dequant.to(x.dtype)
 
 # -------------------------------------------------------------------------
 # Quantization Logic (Pure PyTorch Simulation)
@@ -143,21 +270,52 @@ def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_u
     return dequant.to(x.dtype), quant.reshape(init_shape), scaling_factor, use_4
 
 class TorchMXLinear(nn.Linear):
-    def __init__(self, in_features, out_features, bias=True, block_size=32, prevent_zero=True, four_over_six=False, use_ue5m3=False, use_hierarchical=False):
+    def __init__(self, in_features, out_features, bias=True, block_size=32, prevent_zero=True, four_over_six=False, use_ue5m3=False, use_hierarchical=False, ablation_mode=False, b_thresh=0.0, a_thresh=0.0, use_mxfp4=False, format="e2m1", hadamard_size=0, hadamard_seed=42):
         super().__init__(in_features, out_features, bias)
         self.block_size = block_size
         self.prevent_zero = prevent_zero
         self.four_over_six = four_over_six
         self.use_ue5m3 = use_ue5m3
         self.use_hierarchical = use_hierarchical
+        self.ablation_mode = ablation_mode
+        self.b_thresh = b_thresh
+        self.a_thresh = a_thresh
+        self.use_mxfp4 = use_mxfp4
+        self.format = format
+        self.hadamard_size = hadamard_size
+        self.hadamard_seed = hadamard_seed
         
     def forward(self, input):
-        q_weight, _, _, _ = FP4_quant_torch(self.weight, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical)
-        q_input, _, _, _ = FP4_quant_torch(input, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical)
-        return F.linear(q_input, q_weight, self.bias)
+        if self.ablation_mode:
+            w_abs = torch.abs(self.weight)
+            w_mask = (w_abs >= self.b_thresh) & (w_abs <= self.a_thresh)
+            masked_weight = torch.where(w_mask, torch.zeros_like(self.weight), self.weight)
+            
+            i_abs = torch.abs(input)
+            i_mask = (i_abs >= self.b_thresh) & (i_abs <= self.a_thresh)
+            masked_input = torch.where(i_mask, torch.zeros_like(input), input)
+            
+            return F.linear(masked_input, masked_weight, self.bias)
+        else:
+            w = self.weight
+            x = input
+            
+            if self.hadamard_size > 0:
+                x_rot, w_rot = had_mod_torch(x, w, had_size=self.hadamard_size, seed=self.hadamard_seed)
+            else:
+                x_rot, w_rot = x, w
+                
+            if self.use_mxfp4:
+                q_weight = quantize_mxfp4_torch(w_rot, self.block_size, format=self.format, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical)
+                q_input = quantize_mxfp4_torch(x_rot, self.block_size, format=self.format, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical)
+            else:
+                q_weight, _, _, _ = FP4_quant_torch(w_rot, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical)
+                q_input, _, _, _ = FP4_quant_torch(x_rot, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical)
+                
+            return F.linear(q_input, q_weight, self.bias)
 
-def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, use_ue5m3=False, num_steps=None):
-    print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, use_ue5m3={use_ue5m3}, num_steps={num_steps}")
+def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, use_ue5m3=False, num_steps=None, use_hierarchical=False, ablation_mode=False, b_thresh=0.0, a_thresh=0.0, use_mxfp4=False, format="e2m1", hadamard_size=0, hadamard_seed=42):
+    print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, use_ue5m3={use_ue5m3}, num_steps={num_steps}, use_hierarchical={use_hierarchical}, ablation_mode={ablation_mode}, b_thresh={b_thresh}, a_thresh={a_thresh}, use_mxfp4={use_mxfp4}, format={format}, hadamard_size={hadamard_size}, hadamard_seed={hadamard_seed}")
     
     tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16, trust_remote_code=True).to("cuda")
@@ -185,7 +343,7 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, 
                          father_module = getattr(father_module, part)
                 
                 idx = idx + 1 if idx != 0 else idx
-                new_m = TorchMXLinear(module.in_features, module.out_features, module.bias is not None, block_size=block_size, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3)
+                new_m = TorchMXLinear(module.in_features, module.out_features, module.bias is not None, block_size=block_size, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3, use_hierarchical=use_hierarchical, ablation_mode=ablation_mode, b_thresh=b_thresh, a_thresh=a_thresh, use_mxfp4=use_mxfp4, format=format, hadamard_size=hadamard_size, hadamard_seed=hadamard_seed)
                 new_m.weight.data = module.weight.data
                 new_m.bias = module.bias
                 print(f"Replacing layer: {name}")
@@ -281,7 +439,43 @@ if __name__ == "__main__":
                     return float(df.loc[idx, "Baseline"])
         return None
         
-    if len(sys.argv) > 2:
+    if len(sys.argv) > 2 and sys.argv[2].lower() == "ablation":
+        b_thresh = float(sys.argv[3])
+        a_thresh = float(sys.argv[4])
+        num_steps = int(sys.argv[5]) if len(sys.argv) > 5 and sys.argv[5].lower() != "none" else None
+        csv_suffix = sys.argv[6] if len(sys.argv) > 6 else ""
+        
+        base_ppl = read_base_from_csv(model_id)
+        if base_ppl is None:
+            print(f"Baseline not found for {model_id}. Establishing dynamically...")
+            base_ppl = run_eval(model_id, None, num_steps=num_steps)
+            
+        ppl = run_eval(model_id, block_size=1, ablation_mode=True, b_thresh=b_thresh, a_thresh=a_thresh, num_steps=num_steps)
+        gap = ppl - base_ppl
+        
+        disp_name = model_id
+        for k, v in {"granite": "Granite", "llama": "Llama", "qwen": "Qwen", "deepseek": "DeepSeek"}.items():
+            if k in model_id.lower():
+                disp_name = v
+                break
+                
+        path_csv = f"results/ablation_heatmap_{disp_name}{csv_suffix}.csv"
+        os.makedirs("results", exist_ok=True)
+        
+        t_abs = ["0.0", "0.0005", "0.001", "0.002", "0.004", "0.006", "0.008", "0.016", "0.035"]
+        if os.path.exists(path_csv):
+            df = pd.read_csv(path_csv, index_col=0)
+        else:
+            df = pd.DataFrame(np.nan, index=t_abs[:-1], columns=t_abs[1:])
+            df.index.name = "B_Thresh"
+            
+        b_lbl = "0.0" if b_thresh == 0.0 else str(b_thresh)
+        a_lbl = "0.0" if a_thresh == 0.0 else str(a_thresh)
+        
+        df.loc[b_lbl, a_lbl] = gap
+        df.to_csv(path_csv)
+        print(f"Successfully recorded ablation gap {gap:.4f} to {path_csv}")
+    elif len(sys.argv) > 2:
         if sys.argv[2].lower() == "none" or sys.argv[2] == "":
             block_sizes = [None]
         else:
@@ -292,6 +486,11 @@ if __name__ == "__main__":
         use_ue5m3 = False
         num_steps = None
         csv_suffix = ""
+        use_hierarchical = False
+        use_mxfp4 = False
+        format = "e2m1"
+        hadamard_size = 0
+        hadamard_seed = 42
         
         if len(sys.argv) > 3:
             prevent_zero = sys.argv[3].lower() == "true"
@@ -299,27 +498,50 @@ if __name__ == "__main__":
             four_over_six = sys.argv[4].lower() == "true"
         if len(sys.argv) > 5:
             use_ue5m3 = sys.argv[5].lower() == "true"
-        if len(sys.argv) > 6 and sys.argv[6].lower() != "none":
-            num_steps = int(sys.argv[6])
-        if len(sys.argv) > 7:
-            csv_suffix = sys.argv[7]
+        if len(sys.argv) > 6:
+            use_hierarchical = sys.argv[6].lower() == "true"
+        if len(sys.argv) > 7 and sys.argv[7].lower() != "none":
+            num_steps = int(sys.argv[7])
+        if len(sys.argv) > 8:
+            csv_suffix = sys.argv[8]
+        if len(sys.argv) > 9:
+            use_mxfp4 = sys.argv[9].lower() == "true"
+        if len(sys.argv) > 10:
+            format = sys.argv[10]
+        if len(sys.argv) > 11 and sys.argv[11].lower() != "none":
+            hadamard_size = int(sys.argv[11])
+        if len(sys.argv) > 12 and sys.argv[12].lower() != "none":
+            hadamard_seed = int(sys.argv[12])
             
-        if not prevent_zero and not four_over_six and not use_ue5m3:
-            option = "e4m3"
-        elif prevent_zero and not four_over_six and not use_ue5m3:
-            option = "e4m3 + PZ"
-        elif not prevent_zero and four_over_six and not use_ue5m3:
-            option = "e4m3 + 4o6"
-        elif prevent_zero and four_over_six and not use_ue5m3:
-            option = "e4m3 + 4o6 + PZ"
-        elif prevent_zero and not four_over_six and use_ue5m3:
-            option = "ue5m3 + PZ"
-        elif not prevent_zero and four_over_six and use_ue5m3:
-            option = "ue5m3 + 4o6"
-        elif prevent_zero and four_over_six and use_ue5m3:
-            option = "ue5m3 + 4o6 + PZ"
+        if use_mxfp4:
+            option = f"mxfp4 ({format})"
+            if four_over_six:
+                option += " + 4o6"
         else:
-            option = "ue5m3_unknown"
+            if not prevent_zero and not four_over_six and not use_ue5m3:
+                option = "e4m3"
+            elif prevent_zero and not four_over_six and not use_ue5m3:
+                option = "e4m3 + PZ"
+            elif not prevent_zero and four_over_six and not use_ue5m3:
+                option = "e4m3 + 4o6"
+            elif prevent_zero and four_over_six and not use_ue5m3:
+                option = "e4m3 + 4o6 + PZ"
+            elif not prevent_zero and not four_over_six and use_ue5m3:
+                option = "ue5m3"
+            elif prevent_zero and not four_over_six and use_ue5m3:
+                option = "ue5m3 + PZ"
+            elif not prevent_zero and four_over_six and use_ue5m3:
+                option = "ue5m3 + 4o6"
+            elif prevent_zero and four_over_six and use_ue5m3:
+                option = "ue5m3 + 4o6 + PZ"
+            else:
+                option = "ue5m3_unknown"
+            
+        if use_hierarchical:
+            option += " + H"
+            
+        if hadamard_size > 0:
+            option += f" + RH{hadamard_size}"
             
         if block_sizes == [None]:
             base_ppl = None
@@ -327,7 +549,7 @@ if __name__ == "__main__":
             base_ppl = read_base_from_csv(model_id)
         
         for bs in block_sizes:
-            ppl = run_eval(model_id, bs, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3, num_steps=num_steps)
+            ppl = run_eval(model_id, bs, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3, num_steps=num_steps, use_hierarchical=use_hierarchical, use_mxfp4=use_mxfp4, format=format, hadamard_size=hadamard_size, hadamard_seed=hadamard_seed)
             if base_ppl is None and bs is not None:
                 print(f"Baseline not found for {model_id}. Please run it first.")
                 continue

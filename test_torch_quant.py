@@ -1,5 +1,12 @@
 import torch
-from torch_eval import FP4_quant_torch
+from torch_eval import (
+    FP4_quant_torch,
+    get_hadamard_matrix,
+    apply_hadamard_torch,
+    had_mod_torch,
+    quantize_mxfp4_torch,
+    TorchMXLinear
+)
 
 def test_torch_quant():
     x = (torch.rand(1024, 1024, dtype=torch.float32).cuda() - 0.5) * 20.0
@@ -200,6 +207,146 @@ def test_hierarchical_scaling_snr():
     assert snr_hier >= snr_std - 0.1, "Hierarchical scaling degraded SNR!"
     print("Case 10 passed!")
 
+def test_hadamard_orthonormality():
+    print("\n--- Test Case 11: Verify Hadamard Orthonormality ---")
+    
+    for n in [32, 64, 256]:
+        H = get_hadamard_matrix(n, device="cuda", dtype=torch.float32)
+        assert H.shape == (n, n), f"Expected shape ({n}, {n}), got {H.shape}"
+        
+        # Check H @ H.T / n == I
+        I_approx = (H @ H.t()) / n
+        I_true = torch.eye(n, device="cuda", dtype=torch.float32)
+        
+        diff = torch.abs(I_approx - I_true).max()
+        print(f"Size {n} orthonormality max diff: {diff.item()}")
+        assert diff < 1e-5, f"Hadamard matrix of size {n} is not orthonormal! Max diff: {diff.item()}"
+        
+    print("Case 11 passed!")
+
+def test_hadamard_inner_product_preservation():
+    print("\n--- Test Case 12: Verify Hadamard Inner-Product Preservation ---")
+    
+    # x: (M, K), w: (N, K)
+    # Let's choose K = 256, M = 4, N = 8
+    # hadamard size must divide K. Here hadamard size = 256.
+    x = torch.randn(4, 256, device="cuda", dtype=torch.float32)
+    w = torch.randn(8, 256, device="cuda", dtype=torch.float32)
+    
+    x_had, w_had = had_mod_torch(x, w, had_size=256, seed=123)
+    
+    out_orig = x @ w.t()
+    out_had = x_had @ w_had.t()
+    
+    diff = torch.abs(out_orig - out_had).max()
+    print(f"Inner-product preservation max diff: {diff.item()}")
+    assert diff < 1e-4, f"Hadamard transform failed to preserve inner products! Max diff: {diff.item()}"
+    
+    print("Case 12 passed!")
+
+def test_hadamard_seeding_consistency():
+    print("\n--- Test Case 13: Verify Hadamard Seeding and Sign Randomization ---")
+    
+    x = torch.randn(4, 256, device="cuda", dtype=torch.float32)
+    w = torch.randn(8, 256, device="cuda", dtype=torch.float32)
+    
+    # Same seed -> same outputs
+    x_had_a, w_had_a = had_mod_torch(x, w, had_size=256, seed=42)
+    x_had_b, w_had_b = had_mod_torch(x, w, had_size=256, seed=42)
+    
+    diff_same_x = torch.abs(x_had_a - x_had_b).max().item()
+    diff_same_w = torch.abs(w_had_a - w_had_b).max().item()
+    print(f"Same seed diff - X: {diff_same_x}, W: {diff_same_w}")
+    assert diff_same_x == 0.0 and diff_same_w == 0.0, "Different outputs with same seed!"
+    
+    # Different seed -> different outputs
+    x_had_c, w_had_c = had_mod_torch(x, w, had_size=256, seed=43)
+    diff_diff_x = torch.abs(x_had_a - x_had_c).max().item()
+    diff_diff_w = torch.abs(w_had_a - w_had_c).max().item()
+    print(f"Different seed diff - X: {diff_diff_x}, W: {diff_diff_w}")
+    assert diff_diff_x > 1e-3 and diff_diff_w > 1e-3, "Same outputs with different seeds!"
+    
+    print("Case 13 passed!")
+
+def test_mxfp4_grid_snapping():
+    print("\n--- Test Case 14: Verify MXFP4 Grid Snapping ---")
+    
+    x = (torch.rand(4, 128, device="cuda", dtype=torch.float32) - 0.5) * 50.0
+    
+    # Test e2m1
+    qx_e2m1 = quantize_mxfp4_torch(x, block_size=32, format="e2m1")
+    grid_e2m1 = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0], device="cuda")
+    
+    # Reconstruct E8M0 scale per block
+    x_b = x.reshape(-1, 32)
+    max_abs = torch.max(torch.abs(x_b), dim=-1, keepdim=True).values
+    max_abs = torch.clamp(max_abs, min=1e-7)
+    log2_scale = torch.ceil(torch.log2(max_abs / 6.0))
+    scale_e2m1 = (2.0 ** log2_scale).reshape(-1, 1)
+    
+    qx_b = qx_e2m1.reshape(-1, 32)
+    scaled_qx = torch.abs(qx_b / scale_e2m1)
+    
+    dists = torch.abs(scaled_qx.unsqueeze(-1) - grid_e2m1)
+    min_dists = torch.min(dists, dim=-1).values
+    assert torch.allclose(min_dists, torch.zeros_like(min_dists), atol=1e-5), "e2m1 snapped values not on grid!"
+    
+    # Test e1m2
+    qx_e1m2 = quantize_mxfp4_torch(x, block_size=32, format="e1m2")
+    grid_e1m2 = torch.tensor([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], device="cuda")
+    
+    log2_scale_e1m2 = torch.ceil(torch.log2(max_abs / 7.0))
+    scale_e1m2 = (2.0 ** log2_scale_e1m2).reshape(-1, 1)
+    
+    qx_b_e1m2 = qx_e1m2.reshape(-1, 32)
+    scaled_qx_e1m2 = torch.abs(qx_b_e1m2 / scale_e1m2)
+    
+    dists_e1m2 = torch.abs(scaled_qx_e1m2.unsqueeze(-1) - grid_e1m2)
+    min_dists_e1m2 = torch.min(dists_e1m2, dim=-1).values
+    assert torch.allclose(min_dists_e1m2, torch.zeros_like(min_dists_e1m2), atol=1e-5), "e1m2 snapped values not on grid!"
+    
+    print("Case 14 passed!")
+
+def test_torch_mx_linear_pipeline():
+    print("\n--- Test Case 15: Verify TorchMXLinear Pipeline Stability ---")
+    
+    # 1. Standard MXFP4 forward
+    layer = TorchMXLinear(
+        in_features=256, 
+        out_features=128, 
+        bias=True, 
+        block_size=32, 
+        use_mxfp4=True, 
+        format="e2m1", 
+        hadamard_size=256, 
+        hadamard_seed=42
+    ).cuda().bfloat16()
+    
+    x = torch.randn(8, 256, device="cuda", dtype=torch.bfloat16)
+    out = layer(x)
+    
+    assert out.shape == (8, 128), f"Expected shape (8, 128), got {out.shape}"
+    assert not torch.isnan(out).any(), "Output contains NaNs!"
+    assert not torch.isinf(out).any(), "Output contains Infs!"
+    
+    # 2. Standard MXFP4 forward with e1m2 format
+    layer_e1m2 = TorchMXLinear(
+        in_features=256, 
+        out_features=128, 
+        bias=True, 
+        block_size=32, 
+        use_mxfp4=True, 
+        format="e1m2", 
+        hadamard_size=256, 
+        hadamard_seed=99
+    ).cuda().bfloat16()
+    
+    out_e1m2 = layer_e1m2(x)
+    assert out_e1m2.shape == (8, 128), f"Expected shape (8, 128), got {out_e1m2.shape}"
+    assert not torch.isnan(out_e1m2).any(), "Output contains NaNs!"
+    
+    print("Case 15 passed!")
+
 if __name__ == "__main__":
     test_torch_quant()
     test_against_jax()
@@ -208,3 +355,10 @@ if __name__ == "__main__":
     test_heterodoxy()
     test_ue5m3()
     test_hierarchical_scaling_snr()
+    
+    # New tests
+    test_hadamard_orthonormality()
+    test_hadamard_inner_product_preservation()
+    test_hadamard_seeding_consistency()
+    test_mxfp4_grid_snapping()
+    test_torch_mx_linear_pipeline()
