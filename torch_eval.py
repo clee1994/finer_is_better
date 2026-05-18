@@ -12,45 +12,123 @@ import numpy as np
 import scipy.linalg
 
 
-_UE5M3_GRID = None
-_UE5M3_TH = None
+def parse_format_spec(format_name):
+    fmt = format_name.lower()
+    if fmt == "e2m1":
+        return {"ebits": 2, "mbits": 1, "bias": 1, "has_inf_nan": False, "has_sign": True}
+    elif fmt == "e1m2":
+        return {"ebits": 1, "mbits": 2, "bias": -1, "has_inf_nan": False, "has_sign": True}
+    elif fmt == "ue5m3":
+        return {"ebits": 5, "mbits": 3, "bias": 15, "has_inf_nan": True, "has_sign": False}
+    elif fmt == "e8m0":
+        return {"ebits": 8, "mbits": 0, "bias": 127, "has_inf_nan": True, "has_sign": False}
+    elif fmt == "e4m3":
+        return {"ebits": 4, "mbits": 3, "bias": 7, "has_inf_nan": True, "has_sign": True}
+    
+    has_sign = True
+    if fmt.startswith("u"):
+        has_sign = False
+        fmt = fmt[1:]
+        
+    if fmt.startswith("e") and "m" in fmt:
+        parts = fmt[1:].split("m")
+        ebits = int(parts[0])
+        mbits = int(parts[1])
+        bias = (2 ** (ebits - 1)) - 1 if ebits > 0 else 0
+        has_inf_nan = True
+        return {"ebits": ebits, "mbits": mbits, "bias": bias, "has_inf_nan": has_inf_nan, "has_sign": has_sign}
+        
+    raise ValueError(f"Unknown format: {format_name}")
+
+def generate_float_grid(ebits, mbits, bias, has_inf_nan=True, device="cuda"):
+    grid = [0.0]
+    if mbits > 0:
+        sub_scale = 2.0 ** (1.0 - bias)
+        for m in range(2 ** mbits):
+            val = (m / (2 ** mbits)) * sub_scale
+            if val > 0.0:
+                grid.append(val)
+    
+    e_max = (2 ** ebits) - 2 if has_inf_nan else (2 ** ebits) - 1
+    for e in range(1, e_max + 1):
+        scale = 2.0 ** (e - bias)
+        if mbits > 0:
+            for m in range(2 ** mbits):
+                val = (1.0 + m / (2 ** mbits)) * scale
+                grid.append(val)
+        else:
+            grid.append(scale)
+            
+    grid = sorted(list(set(grid)))
+    grid_t = torch.tensor(grid, dtype=torch.float32, device=device)
+    
+    if mbits == 0:
+        th_t = (grid_t[:-1] + grid_t[1:]) / 2.0
+        if len(grid_t) > 2:
+            th_t[1:] = torch.sqrt(grid_t[1:-1] * grid_t[2:])
+    else:
+        th_t = (grid_t[:-1] + grid_t[1:]) / 2.0
+        
+    max_rep = grid_t[-1].item()
+    return grid_t, th_t, max_rep
+
+def get_element_format_grid(format_name, device="cuda"):
+    spec = parse_format_spec(format_name)
+    return generate_float_grid(
+        ebits=spec["ebits"],
+        mbits=spec["mbits"],
+        bias=spec["bias"],
+        has_inf_nan=spec["has_inf_nan"],
+        device=device
+    )
 
 def get_ue5m3_grid():
-    global _UE5M3_GRID, _UE5M3_TH
-    if _UE5M3_GRID is None:
-        grid = []
-        # Subnormals (e=0)
-        for m in range(8):
-            val = (m / 8.0) * (2**-14)
-            grid.append(val)
-            
-        # Normals (e=1..30)
-        for e in range(1, 31):
-            for m in range(8):
-                val = (1.0 + m / 8.0) * (2**(e - 15))
-                grid.append(val)
-                
-        _UE5M3_GRID = torch.tensor(sorted(list(set(grid))), dtype=torch.float32).cuda()
-        _UE5M3_TH = (_UE5M3_GRID[:-1] + _UE5M3_GRID[1:]) / 2
-    return _UE5M3_GRID, _UE5M3_TH
+    grid, th, _ = get_element_format_grid("ue5m3")
+    return grid, th
 
-def quantize_fp8_simulate(val, prevent_zero=True, use_ue5m3=False):
-    if not use_ue5m3:
-        # Clamp to max value of float8_e4m3fn to prevent overflow to NaN
+def quantize_scale_simulate(val, format="e4m3", prevent_zero=True, rounding="round"):
+    if format == "e4m3":
         val_clipped = torch.clamp(val, max=448.0)
         quant = val_clipped.to(torch.float8_e4m3fn).to(val.dtype)
         min_scale = 2**-9
-    else:
-        grid, th = get_ue5m3_grid()
-        # Use bucketize for O(log K) search instead of O(K) distance calculation!
-        idx = torch.bucketize(val, th)
+        if prevent_zero:
+            quant = torch.where(quant == 0.0, min_scale, quant)
+        return quant.reshape(val.shape)
+        
+    spec = parse_format_spec(format)
+    grid, th, max_rep = generate_float_grid(
+        ebits=spec["ebits"],
+        mbits=spec["mbits"],
+        bias=spec["bias"],
+        has_inf_nan=spec["has_inf_nan"],
+        device=val.device
+    )
+    
+    min_scale = grid[1].item() if len(grid) > 1 else 0.0
+    val_clipped = torch.clamp(val, max=max_rep)
+    
+    if rounding == "round":
+        idx = torch.bucketize(val_clipped, th)
         quant = grid[idx]
-        min_scale = 2**-17 # Smallest non-zero subnormal in UE5M3
+    elif rounding == "ceil":
+        idx = torch.bucketize(val_clipped, grid, right=False)
+        idx = torch.clamp(idx, max=len(grid) - 1)
+        quant = grid[idx]
+    elif rounding == "floor":
+        idx = torch.bucketize(val_clipped, grid, right=True)
+        idx = torch.clamp(idx - 1, min=0)
+        quant = grid[idx]
+    else:
+        raise ValueError(f"Unsupported rounding mode: {rounding}")
         
     if prevent_zero:
         quant = torch.where(quant == 0.0, min_scale, quant)
-    
+        
     return quant.reshape(val.shape)
+
+def quantize_fp8_simulate(val, prevent_zero=True, use_ue5m3=False):
+    fmt = "ue5m3" if use_ue5m3 else "e4m3"
+    return quantize_scale_simulate(val, format=fmt, prevent_zero=prevent_zero, rounding="round")
 
 # -------------------------------------------------------------------------
 # MXFP4 and Hadamard Transform Logic
@@ -128,24 +206,29 @@ def mse_select_quant(x, scale_a, scale_b, snap_fn):
     
     return dequant, quant, scale, use_a
 
-def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_ue5m3=False, use_hierarchical=False, use_mxfp4=False, format="e2m1"):
+def quantize_mx_torch(x, block_size, elem_format="e2m1", scale_format="e4m3", prevent_zero=True, four_over_six=False, use_hierarchical=False):
     init_shape = x.shape
     
+    grid, th, max_rep = get_element_format_grid(elem_format, device=x.device)
+    
     if use_hierarchical:
-        # Compute per-channel scale
         axes = list(range(len(x.shape)))
         axes.remove(0)
         max_channel = torch.amax(torch.abs(x), dim=axes, keepdim=True)
         
-        if use_mxfp4:
-            max_fp8 = 6.0 if format == "e2m1" else 7.0
-        elif not use_ue5m3:
-            max_fp8 = 448.0
+        if scale_format == "e4m3":
+            max_scale_val = 448.0
         else:
-            grid_ue, _ = get_ue5m3_grid()
-            max_fp8 = torch.max(grid_ue).item()
+            spec = parse_format_spec(scale_format)
+            _, _, max_scale_val = generate_float_grid(
+                ebits=spec["ebits"],
+                mbits=spec["mbits"],
+                bias=spec["bias"],
+                has_inf_nan=spec["has_inf_nan"],
+                device=x.device
+            )
             
-        channel_scale = max_channel / max_fp8
+        channel_scale = max_channel / max_scale_val
         channel_scale = torch.where(channel_scale != 0, channel_scale, torch.ones_like(channel_scale))
         x_norm = x / channel_scale
     else:
@@ -153,17 +236,6 @@ def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_u
         
     x_reshaped = x_norm.reshape(-1, block_size)
     
-    if format == "e2m1":
-        grid = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0], dtype=torch.float32, device=x.device)
-        th = torch.tensor([0.250125, 0.749765, 1.250495, 1.749515, 2.500990, 3.499030, 5.001970], dtype=torch.float32, device=x.device)
-        max_rep = 6.0
-    elif format == "e1m2":
-        grid = torch.tensor([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], dtype=torch.float32, device=x.device)
-        th = torch.tensor([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5], dtype=torch.float32, device=x.device)
-        max_rep = 7.0
-    else:
-        raise ValueError(f"Unknown FP4 format: {format}")
-        
     def snap_fp4(val):
         clipped = torch.clamp(val, min=-max_rep, max=max_rep)
         abs_clipped = torch.abs(clipped)
@@ -175,13 +247,9 @@ def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_u
         max_abs = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
         max_abs = torch.clamp(max_abs, min=1e-7)
         
-        if use_mxfp4:
-            log2_scale = torch.ceil(torch.log2(max_abs / max_rep))
-            scaling_factor = 2.0 ** log2_scale
-        else:
-            raw_scale = max_abs / max_rep
-            scaling_factor = quantize_fp8_simulate(raw_scale, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
-            
+        raw_scale = max_abs / max_rep
+        scaling_factor = quantize_scale_simulate(raw_scale, format=scale_format, prevent_zero=prevent_zero, rounding="ceil" if scale_format == "e8m0" else "round")
+        
         # Safe division to mimic JAX behavior without NaN propagation
         safe_scale = torch.where(scaling_factor != 0.0, scaling_factor, torch.ones_like(scaling_factor))
         scaled = x_reshaped / safe_scale
@@ -194,15 +262,21 @@ def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_u
         max_abs = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
         max_abs = torch.clamp(max_abs, min=1e-7)
         
-        if use_mxfp4:
-            ideal_log = torch.log2(max_abs / max_rep)
-            scale_4 = 2.0 ** torch.floor(ideal_log)
-            scale_6 = 2.0 ** torch.ceil(ideal_log)
+        if scale_format == "e4m3":
+            is_exponential = False
+        else:
+            spec = parse_format_spec(scale_format)
+            is_exponential = (spec["mbits"] == 0)
+            
+        if is_exponential:
+            raw_scale = max_abs / max_rep
+            scale_4 = quantize_scale_simulate(raw_scale, format=scale_format, prevent_zero=prevent_zero, rounding="floor")
+            scale_6 = quantize_scale_simulate(raw_scale, format=scale_format, prevent_zero=prevent_zero, rounding="ceil")
         else:
             raw_scale_4 = (max_abs / max_rep) * 1.5
             raw_scale_6 = max_abs / max_rep
-            scale_4 = quantize_fp8_simulate(raw_scale_4, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
-            scale_6 = quantize_fp8_simulate(raw_scale_6, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
+            scale_4 = quantize_scale_simulate(raw_scale_4, format=scale_format, prevent_zero=prevent_zero)
+            scale_6 = quantize_scale_simulate(raw_scale_6, format=scale_format, prevent_zero=prevent_zero)
             
         dequant, quant, scaling_factor, use_4 = mse_select_quant(x_reshaped, scale_4, scale_6, snap_fp4)
         
@@ -211,6 +285,10 @@ def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_u
         dequant = dequant * channel_scale
         
     return dequant.to(x.dtype), quant.reshape(init_shape), scaling_factor, use_4
+
+def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_ue5m3=False, use_hierarchical=False, use_mxfp4=False, format="e2m1"):
+    scale_fmt = "e8m0" if use_mxfp4 else ("ue5m3" if use_ue5m3 else "e4m3")
+    return quantize_mx_torch(x, block_size, elem_format=format, scale_format=scale_fmt, prevent_zero=prevent_zero, four_over_six=four_over_six, use_hierarchical=use_hierarchical)
 
 class TorchMXLinear(nn.Linear):
     def __init__(self, in_features, out_features, bias=True, block_size=32, prevent_zero=True, four_over_six=False, use_ue5m3=False, use_hierarchical=False, use_mxfp4=False, format="e2m1", hadamard_size=0, hadamard_seed=42):
