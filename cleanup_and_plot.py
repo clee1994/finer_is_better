@@ -5,18 +5,29 @@ import sys
 import glob
 
 def cleanup_and_plot():
-    path_csv = "/home/cjsschaefer_google_com/finer_is_better/results.csv"
+    path_csv = "/home/cjsschaefer_google_com/finer_is_better/results/results.csv"
     if not os.path.exists(path_csv):
         print("results.csv not found.")
         return
         
     df = pd.read_csv(path_csv, index_col=0)
     
+    # Read all results_*.csv and combine them!
+    csv_files = glob.glob("/home/cjsschaefer_google_com/finer_is_better/results/results_*.csv")
+    dfs = [df]
+    for f in csv_files:
+        if "results_granite_test.csv" in f: # Skip test file!
+            continue
+        dfs.append(pd.read_csv(f, index_col=0))
+        
+    df = pd.concat(dfs)
+    
     # Rename nvfp4 to e4m3 to merge old and new results
     # And rename model names to be consistent!
     new_index = []
     for idx in df.index:
         new_idx = idx.replace("nvfp4", "e4m3")
+        new_idx = new_idx.replace("ue5m3_unknown", "ue5m3")
         
         if "Llama 3.1 8B" in new_idx:
             new_idx = new_idx.replace("Llama 3.1 8B", "Llama")
