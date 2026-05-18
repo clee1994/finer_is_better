@@ -4,7 +4,6 @@ from torch_eval import (
     get_hadamard_matrix,
     apply_hadamard_torch,
     had_mod_torch,
-    quantize_mxfp4_torch,
     TorchMXLinear
 )
 
@@ -274,7 +273,7 @@ def test_mxfp4_grid_snapping():
     x = (torch.rand(4, 128, device="cuda", dtype=torch.float32) - 0.5) * 50.0
     
     # Test e2m1
-    qx_e2m1 = quantize_mxfp4_torch(x, block_size=32, format="e2m1")
+    qx_e2m1, _, _, _ = FP4_quant_torch(x, block_size=32, use_mxfp4=True, format="e2m1")
     grid_e2m1 = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0], device="cuda")
     
     # Reconstruct E8M0 scale per block
@@ -292,7 +291,7 @@ def test_mxfp4_grid_snapping():
     assert torch.allclose(min_dists, torch.zeros_like(min_dists), atol=1e-5), "e2m1 snapped values not on grid!"
     
     # Test e1m2
-    qx_e1m2 = quantize_mxfp4_torch(x, block_size=32, format="e1m2")
+    qx_e1m2, _, _, _ = FP4_quant_torch(x, block_size=32, use_mxfp4=True, format="e1m2")
     grid_e1m2 = torch.tensor([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], device="cuda")
     
     log2_scale_e1m2 = torch.ceil(torch.log2(max_abs / 7.0))

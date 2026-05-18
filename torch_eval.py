@@ -128,7 +128,7 @@ def mse_select_quant(x, scale_a, scale_b, snap_fn):
     
     return dequant, quant, scale, use_a
 
-def quantize_mxfp4_torch(x, block_size, format="e2m1", four_over_six=False, use_hierarchical=False):
+def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_ue5m3=False, use_hierarchical=False, use_mxfp4=False, format="e2m1"):
     init_shape = x.shape
     
     if use_hierarchical:
@@ -136,7 +136,17 @@ def quantize_mxfp4_torch(x, block_size, format="e2m1", four_over_six=False, use_
         axes = list(range(len(x.shape)))
         axes.remove(0)
         max_channel = torch.amax(torch.abs(x), dim=axes, keepdim=True)
-        channel_scale = torch.where(max_channel != 0, max_channel / 6.0, torch.ones_like(max_channel))
+        
+        if use_mxfp4:
+            max_fp8 = 6.0 if format == "e2m1" else 7.0
+        elif not use_ue5m3:
+            max_fp8 = 448.0
+        else:
+            grid_ue, _ = get_ue5m3_grid()
+            max_fp8 = torch.max(grid_ue).item()
+            
+        channel_scale = max_channel / max_fp8
+        channel_scale = torch.where(channel_scale != 0, channel_scale, torch.ones_like(channel_scale))
         x_norm = x / channel_scale
     else:
         x_norm = x
@@ -145,95 +155,33 @@ def quantize_mxfp4_torch(x, block_size, format="e2m1", four_over_six=False, use_
     
     if format == "e2m1":
         grid = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0], dtype=torch.float32, device=x.device)
+        th = torch.tensor([0.250125, 0.749765, 1.250495, 1.749515, 2.500990, 3.499030, 5.001970], dtype=torch.float32, device=x.device)
         max_rep = 6.0
     elif format == "e1m2":
         grid = torch.tensor([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0], dtype=torch.float32, device=x.device)
+        th = torch.tensor([0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.5], dtype=torch.float32, device=x.device)
         max_rep = 7.0
     else:
         raise ValueError(f"Unknown FP4 format: {format}")
         
-    def snap_to_grid(val):
-        abs_val = torch.abs(val)
-        dists = torch.abs(abs_val.unsqueeze(-1) - grid)
-        idx = torch.argmin(dists, dim=-1)
-        return grid[idx] * torch.sign(val)
-
-    if not four_over_six:
-        max_abs = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
-        max_abs = torch.clamp(max_abs, min=1e-7)
-        
-        # E8M0 exponent (power-of-two micro scale factor)
-        log2_scale = torch.ceil(torch.log2(max_abs / max_rep))
-        scale = 2.0 ** log2_scale
-        
-        scaled = x_reshaped / scale
-        quant = snap_to_grid(scaled)
-        dequant = quant * scale
-    else:
-        # Floor / Ceil scale selections
-        max_abs = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
-        max_abs = torch.clamp(max_abs, min=1e-7)
-        
-        ideal_log = torch.log2(max_abs / max_rep)
-        exp_floor = torch.floor(ideal_log)
-        exp_ceil = torch.ceil(ideal_log)
-        
-        scale_4 = 2.0 ** exp_floor
-        scale_6 = 2.0 ** exp_ceil
-        
-        dequant, _, _, _ = mse_select_quant(x_reshaped, scale_4, scale_6, snap_to_grid)
-        
-    dequant = dequant.reshape(init_shape)
-    if use_hierarchical:
-        dequant = dequant * channel_scale
-        
-    return dequant.to(x.dtype)
-
-# -------------------------------------------------------------------------
-# Quantization Logic (Pure PyTorch Simulation)
-# -------------------------------------------------------------------------
-def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_ue5m3=False, use_hierarchical=False):
-    init_shape = x.shape
-    
-    if use_hierarchical:
-        # Compute per-channel scale
-        # Reduce along all dimensions except dimension 0
-        axes = list(range(len(x.shape)))
-        axes.remove(0)
-        
-        max_channel = torch.amax(torch.abs(x), dim=axes, keepdim=True)
-        
-        if not use_ue5m3:
-            max_fp8 = 448.0
-        else:
-            grid, _ = get_ue5m3_grid()
-            max_fp8 = torch.max(grid).item()
-            
-        channel_scale = max_channel / max_fp8
-        # Avoid division by zero
-        channel_scale = torch.where(channel_scale != 0, channel_scale, torch.ones_like(channel_scale))
-        
-        x_norm = x / channel_scale
-    else:
-        x_norm = x
-        
-    x_reshaped = x_norm.reshape(-1, block_size)
-    
-    def quantize_fp4(abs_clipped, sign):
-        th = torch.tensor([0.250125, 0.749765, 1.250495, 1.749515, 2.500990, 3.499030, 5.001970], dtype=torch.float32).cuda()
-        grid = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0], dtype=torch.float32).cuda()
+    def snap_fp4(val):
+        clipped = torch.clamp(val, min=-max_rep, max=max_rep)
+        abs_clipped = torch.abs(clipped)
         idx = torch.bucketize(abs_clipped, th)
         quant = grid[idx]
-        return quant * sign
-        
-    def snap_fp4(val):
-        clipped = torch.clamp(val, min=-6.0, max=6.0)
-        return quantize_fp4(torch.abs(clipped), torch.sign(clipped))
+        return quant * torch.sign(clipped)
         
     if not four_over_six:
-        raw_scale = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values / 6.0
-        scaling_factor = quantize_fp8_simulate(raw_scale, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
+        max_abs = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
+        max_abs = torch.clamp(max_abs, min=1e-7)
         
+        if use_mxfp4:
+            log2_scale = torch.ceil(torch.log2(max_abs / max_rep))
+            scaling_factor = 2.0 ** log2_scale
+        else:
+            raw_scale = max_abs / max_rep
+            scaling_factor = quantize_fp8_simulate(raw_scale, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
+            
         # Safe division to mimic JAX behavior without NaN propagation
         safe_scale = torch.where(scaling_factor != 0.0, scaling_factor, torch.ones_like(scaling_factor))
         scaled = x_reshaped / safe_scale
@@ -243,13 +191,19 @@ def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_u
         dequant = quant * scaling_factor
         use_4 = torch.zeros_like(scaling_factor, dtype=torch.bool)
     else:
-        max_val = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
-        raw_scale_4 = (max_val / 6.0) * 1.5
-        raw_scale_6 = max_val / 6.0
+        max_abs = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
+        max_abs = torch.clamp(max_abs, min=1e-7)
         
-        scale_4 = quantize_fp8_simulate(raw_scale_4, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
-        scale_6 = quantize_fp8_simulate(raw_scale_6, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
-        
+        if use_mxfp4:
+            ideal_log = torch.log2(max_abs / max_rep)
+            scale_4 = 2.0 ** torch.floor(ideal_log)
+            scale_6 = 2.0 ** torch.ceil(ideal_log)
+        else:
+            raw_scale_4 = (max_abs / max_rep) * 1.5
+            raw_scale_6 = max_abs / max_rep
+            scale_4 = quantize_fp8_simulate(raw_scale_4, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
+            scale_6 = quantize_fp8_simulate(raw_scale_6, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
+            
         dequant, quant, scaling_factor, use_4 = mse_select_quant(x_reshaped, scale_4, scale_6, snap_fp4)
         
     dequant = dequant.reshape(init_shape)
@@ -280,13 +234,9 @@ class TorchMXLinear(nn.Linear):
         else:
             x_rot, w_rot = x, w
             
-        if self.use_mxfp4:
-            q_weight = quantize_mxfp4_torch(w_rot, self.block_size, format=self.format, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical)
-            q_input = quantize_mxfp4_torch(x_rot, self.block_size, format=self.format, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical)
-        else:
-            q_weight, _, _, _ = FP4_quant_torch(w_rot, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical)
-            q_input, _, _, _ = FP4_quant_torch(x_rot, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical)
-            
+        q_weight, _, _, _ = FP4_quant_torch(w_rot, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical, use_mxfp4=self.use_mxfp4, format=self.format)
+        q_input, _, _, _ = FP4_quant_torch(x_rot, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical, use_mxfp4=self.use_mxfp4, format=self.format)
+        
         return F.linear(q_input, q_weight, self.bias)
 
 def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, use_ue5m3=False, num_steps=None, use_hierarchical=False, use_mxfp4=False, format="e2m1", hadamard_size=0, hadamard_seed=42):
