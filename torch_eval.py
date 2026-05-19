@@ -532,6 +532,12 @@ if __name__ == "__main__":
             option = f"mxfp4 ({elem_format})"
             if four_over_six:
                 option += " + 4o6"
+        elif elem_format in ("int8", "int4"):
+            option = f"{elem_format}"
+            if four_over_six:
+                option += " + 4o6"
+            if prevent_zero:
+                option += " + PZ"
         else:
             option = f"{scale_format}"
             if four_over_six:

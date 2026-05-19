@@ -59,36 +59,27 @@ def plot_all_models(df, output_path):
         "Qwen": "Qwen2.5-14B"
     }
     
-    mapping = {
-        "e4m3_no_pz": "e4m3",
-        "e4m3_pz": "e4m3 + PZ",
-        "4over6_no_pz": "e4m3 + 4o6",
-        "4over6_pz": "e4m3 + 4o6 + PZ",
-        "ue5m3_no_pz": "ue5m3",
-        "ue5m3_pz": "ue5m3 + PZ",
-        "4over6_pz_ue5m3": "ue5m3 + 4o6 + PZ"
-    }
+    mapping = {}
     
     styles = {
-        "e4m3": ("-", "gray"),
-        "e4m3 + H": ("--", "gray"),
+        "int8 + PZ": (":", "gray"),
+        "int8 + PZ + RH256": ("--", "gray"),
+        "int4 + PZ": (":", "orange"),
+        "int4 + PZ + RH256": ("-", "orange"),
         "e4m3 + PZ": ("-", "blue"),
-        "e4m3 + PZ + H": ("--", "blue"),
-        "e4m3 + 4o6": ("-", "green"),
-        "e4m3 + 4o6 + H": ("--", "green"),
-        "e4m3 + 4o6 + PZ": ("-", "red"),
-        "e4m3 + 4o6 + PZ + H": ("--", "red"),
-        "ue5m3": ("-", "orange"),
-        "ue5m3 + H": ("--", "orange"),
-        "ue5m3 + PZ": ("-", "purple"),
-        "ue5m3 + PZ + H": ("--", "purple"),
-        "ue5m3 + 4o6": ("-", "cyan"),
-        "ue5m3 + 4o6 + H": ("--", "cyan"),
-        "ue5m3 + 4o6 + PZ": ("-", "brown"),
-        "ue5m3 + 4o6 + PZ + H": ("--", "brown")
+        "mxfp4 (e2m1)": ("-", "red"),
+        "mxfp4 (e1m2)": ("-", "green")
     }
 
-    order = ["e4m3", "e4m3 + PZ", "e4m3 + 4o6", "e4m3 + 4o6 + PZ", "ue5m3", "ue5m3 + PZ", "ue5m3 + 4o6", "ue5m3 + 4o6 + PZ", "e4m3 + H", "e4m3 + PZ + H", "e4m3 + 4o6 + H", "e4m3 + 4o6 + PZ + H", "ue5m3 + H", "ue5m3 + PZ + H", "ue5m3 + 4o6 + H", "ue5m3 + 4o6 + PZ + H"]
+    order = [
+        "int8 + PZ",
+        "int8 + PZ + RH256",
+        "int4 + PZ",
+        "int4 + PZ + RH256",
+        "e4m3 + PZ",
+        "mxfp4 (e2m1)",
+        "mxfp4 (e1m2)"
+    ]
 
     handles_list = []
     labels_list = []
@@ -161,7 +152,7 @@ def plot_all_models(df, output_path):
     print(f"Consolidated plot saved to {output_path}")
 
 if __name__ == "__main__":
-    csv_path = "/home/cjsschaefer_google_com/finer_is_better/results.csv"
+    csv_path = "results.csv"
     if len(sys.argv) > 1:
         csv_path = sys.argv[1]
 
@@ -170,7 +161,7 @@ if __name__ == "__main__":
         exit(1)
 
     df = pd.read_csv(csv_path, index_col=0)
-    plots_dir = "/home/cjsschaefer_google_com/finer_is_better/plots"
+    plots_dir = "plots"
     if not os.path.exists(plots_dir):
         os.makedirs(plots_dir)
 

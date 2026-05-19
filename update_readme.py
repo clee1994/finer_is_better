@@ -2,8 +2,9 @@ import pandas as pd
 import os
 
 def update_readme():
-    csv_path = "/home/cjsschaefer_google_com/finer_is_better/results/results.csv"
-    readme_path = "/home/cjsschaefer_google_com/finer_is_better/README.md"
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    csv_path = os.path.join(script_dir, "results.csv")
+    readme_path = os.path.join(script_dir, "README.md")
 
     if not os.path.exists(csv_path):
         print("CSV file not found. Skipping README update.")
