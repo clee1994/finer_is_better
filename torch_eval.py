@@ -354,7 +354,7 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
     print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, elem_format={elem_format}, scale_format={scale_format}, num_steps={num_steps}, use_hierarchical={use_hierarchical}, hadamard_size={hadamard_size}, hadamard_seed={hadamard_seed}")
     
     tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16, trust_remote_code=True).to("cuda")
+    model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16, trust_remote_code=True, device_map="cuda")
     
     if block_size is not None:
         head_name = None
