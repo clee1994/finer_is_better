@@ -1,0 +1,6 @@
+Model_Config,Baseline,BS=4,BS=8,BS=16,BS=32,BS=64,BS=128,BS=256,BS=512
+Granite_bf16 + PZ,,,,,,,,,5.7828091049194335
+Granite_bf16 + PZ + RH256,,,,,,,,,0.5496967697143553
+Granite_e4m3 + PZ,,,,0.6413720512390135,,,,,
+Granite_mxfp4 (e2m1),,,,,0.5938981437683104,,,,
+Granite_mxfp4 (e1m2),,,,,1.0449417495727538,,,,

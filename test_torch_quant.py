@@ -375,6 +375,33 @@ def test_generate_float_grid():
     assert max_ue5m3 == 61440.0, f"ue5m3 max mismatch! Got {max_ue5m3}, expected 61440.0"
     print("ue5m3 max value verified!")
 
+    # Test bf16 grid parsing
+    _, _, max_bf16 = get_element_format_grid("bf16")
+    expected_max_bf16 = (2.0 - 2.0**-7) * 2.0**127
+    assert abs(max_bf16 - expected_max_bf16) < 1e-5, f"bf16 max mismatch! Got {max_bf16}, expected {expected_max_bf16}"
+    print("bf16 max value verified!")
+
+    # Test fp16 grid parsing
+    _, _, max_fp16 = get_element_format_grid("fp16")
+    assert max_fp16 == 65504.0, f"fp16 max mismatch! Got {max_fp16}, expected 65504.0"
+    print("fp16 max value verified!")
+
+    # Test int8 (Uniform integer format)
+    grid_int8, th_int8, max_int8 = get_element_format_grid("int8")
+    assert len(grid_int8) == 128, f"int8 grid length mismatch! Got {len(grid_int8)}"
+    assert grid_int8[0] == 0.0 and grid_int8[-1] == 127.0, f"int8 range mismatch!"
+    assert th_int8[0] == 0.5 and th_int8[-1] == 126.5, f"int8 threshold mismatch!"
+    assert max_int8 == 127.0, f"int8 max mismatch!"
+    print("int8 grid verified!")
+
+    # Test int4 (Uniform integer format)
+    grid_int4, th_int4, max_int4 = get_element_format_grid("int4")
+    assert len(grid_int4) == 8, f"int4 grid length mismatch! Got {len(grid_int4)}"
+    assert grid_int4[0] == 0.0 and grid_int4[-1] == 7.0, f"int4 range mismatch!"
+    assert th_int4[0] == 0.5 and th_int4[-1] == 6.5, f"int4 threshold mismatch!"
+    assert max_int4 == 7.0, f"int4 max mismatch!"
+    print("int4 grid verified!")
+
     print("Case 16 passed!")
 
 if __name__ == "__main__":

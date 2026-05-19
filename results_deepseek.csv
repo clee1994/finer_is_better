@@ -1,0 +1,6 @@
+Model_Config,Baseline,BS=4,BS=8,BS=16,BS=32,BS=64,BS=128,BS=256,BS=512
+DeepSeek_bf16 + PZ,,,,,,,,,4.4745725250244135
+DeepSeek_bf16 + PZ + RH256,,,,,,,,,1.6354020690917963
+DeepSeek_e4m3 + PZ,,,,0.5464957809448237,,,,,
+DeepSeek_mxfp4 (e2m1),,,,,1.3479026412963862,,,,
+DeepSeek_mxfp4 (e1m2),,,,,2.00452838897705,,,,

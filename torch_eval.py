@@ -24,6 +24,10 @@ def parse_format_spec(format_name):
         return {"ebits": 8, "mbits": 0, "bias": 127, "has_inf_nan": True, "has_sign": False}
     elif fmt == "e4m3":
         return {"ebits": 4, "mbits": 3, "bias": 7, "has_inf_nan": True, "has_sign": True}
+    elif fmt == "bf16":
+        return {"ebits": 8, "mbits": 7, "bias": 127, "has_inf_nan": True, "has_sign": True}
+    elif fmt in ("fp16", "f16"):
+        return {"ebits": 5, "mbits": 10, "bias": 15, "has_inf_nan": True, "has_sign": True}
     
     has_sign = True
     if fmt.startswith("u"):
@@ -73,6 +77,18 @@ def generate_float_grid(ebits, mbits, bias, has_inf_nan=True, device="cuda"):
     return grid_t, th_t, max_rep
 
 def get_element_format_grid(format_name, device="cuda"):
+    fmt = format_name.lower()
+    if fmt == "int8":
+        grid = torch.arange(128, dtype=torch.float32, device=device)
+        th = (grid[:-1] + grid[1:]) / 2.0
+        max_rep = 127.0
+        return grid, th, max_rep
+    elif fmt == "int4":
+        grid = torch.arange(8, dtype=torch.float32, device=device)
+        th = (grid[:-1] + grid[1:]) / 2.0
+        max_rep = 7.0
+        return grid, th, max_rep
+
     spec = parse_format_spec(format_name)
     return generate_float_grid(
         ebits=spec["ebits"],
@@ -94,6 +110,21 @@ def quantize_scale_simulate(val, format="e4m3", prevent_zero=True, rounding="rou
         if prevent_zero:
             quant = torch.where(quant == 0.0, min_scale, quant)
         return quant.reshape(val.shape)
+    elif format == "bf16":
+        quant = val.to(torch.bfloat16).to(val.dtype)
+        if prevent_zero:
+            # min positive normal for bf16 is 2^-126
+            min_scale = 2**-126
+            quant = torch.where(quant == 0.0, torch.tensor(min_scale, dtype=quant.dtype, device=quant.device), quant)
+        return quant.reshape(val.shape)
+    elif format in ("fp16", "f16"):
+        quant = val.to(torch.float16).to(val.dtype)
+        if prevent_zero:
+            # min positive normal for fp16 is 2^-14
+            min_scale = 2**-14
+            quant = torch.where(quant == 0.0, torch.tensor(min_scale, dtype=quant.dtype, device=quant.device), quant)
+        return quant.reshape(val.shape)
+
         
     spec = parse_format_spec(format)
     grid, th, max_rep = generate_float_grid(
@@ -425,10 +456,12 @@ def update_csv_and_readme(model_id, bs, ppl, base_ppl, option="nvfp4", csv_suffi
         
     df.to_csv(path_csv)
     
-    subprocess.run(["git", "add", path_csv])
-    subprocess.run(["git", "commit", "-m", f"Update results for {row_name} BS={bs}"])
-    subprocess.run(["git", "pull"])
-    subprocess.run(["git", "push"])
+    if os.environ.get("SKIP_GIT", "false").lower() != "true":
+        subprocess.run(["git", "add", path_csv])
+        subprocess.run(["git", "commit", "-m", f"Update results for {row_name} BS={bs}"])
+        subprocess.run(["git", "pull"])
+        subprocess.run(["git", "push"])
+
 
 if __name__ == "__main__":
     model_id = sys.argv[1]
