@@ -2,3 +2,4 @@ Model_Config,Baseline,BS=4,BS=8,BS=16,BS=32,BS=64,BS=128,BS=256
 Llama_mxfp4 (e1m2) + H,,,,,1.8131550979614257,,,
 Llama_mxfp4 (e1m2) + 4o6,,,,,1.1737407875061034,,,
 Llama_e4m3 + PZ + RH16,,,,0.8172225189208984,,,,
+Llama_mxfp4 (e2m1) + RH16,,,,,1.007493896484375,,,
