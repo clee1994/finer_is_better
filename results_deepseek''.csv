@@ -1,3 +1,4 @@
 Model_Config,Baseline,BS=4,BS=8,BS=16,BS=32,BS=64,BS=128,BS=256
 DeepSeek_mxfp4 (e1m2) + H,,,,,2.067387924194336,,,
 DeepSeek_mxfp4 (e1m2) + 4o6,,,,,1.6323760604858393,,,
+DeepSeek_e4m3 + PZ + RH16,,,,0.7683166122436518,,,,
