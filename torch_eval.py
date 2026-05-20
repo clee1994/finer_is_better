@@ -236,9 +236,22 @@ def mse_select_quant(x, scale_a, scale_b, snap_fn):
     
     return dequant, quant, scale, use_a
 
-def quantize_mx_torch(x, block_size, elem_format="e2m1", scale_format="e4m3", prevent_zero=True, four_over_six=False, use_hierarchical=False):
+def quantize_mx_torch(x, block_size, elem_format="e2m1", scale_format="e4m3", prevent_zero=True, four_over_six=False, use_hierarchical=False, clip_percentile=None, rounding=None):
     init_shape = x.shape
     
+    if clip_percentile is not None:
+        x_float = x.float()
+        abs_x = torch.abs(x_float)
+        numel = abs_x.numel()
+        max_sample = 1000000
+        if numel > max_sample:
+            indices = torch.arange(0, max_sample, device=x.device) * (numel - 1) // (max_sample - 1)
+            sample = abs_x.view(-1)[indices]
+            threshold = torch.quantile(sample, clip_percentile)
+        else:
+            threshold = torch.quantile(abs_x, clip_percentile)
+        x = torch.clamp(x, min=-threshold.to(x.dtype), max=threshold.to(x.dtype))
+        
     grid, th, max_rep = get_element_format_grid(elem_format, device=x.device)
     
     if use_hierarchical:
@@ -278,7 +291,13 @@ def quantize_mx_torch(x, block_size, elem_format="e2m1", scale_format="e4m3", pr
         max_abs = torch.clamp(max_abs, min=1e-7)
         
         raw_scale = max_abs / max_rep
-        scaling_factor = quantize_scale_simulate(raw_scale, format=scale_format, prevent_zero=prevent_zero, rounding="ceil" if scale_format == "e8m0" else "round")
+        
+        if rounding is None:
+            effective_rounding = "ceil" if scale_format == "e8m0" else "round"
+        else:
+            effective_rounding = rounding
+            
+        scaling_factor = quantize_scale_simulate(raw_scale, format=scale_format, prevent_zero=prevent_zero, rounding=effective_rounding)
         
         # Safe division to mimic JAX behavior without NaN propagation
         safe_scale = torch.where(scaling_factor != 0.0, scaling_factor, torch.ones_like(scaling_factor))
@@ -321,7 +340,8 @@ def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_h
 
 class TorchMXLinear(nn.Linear):
     def __init__(self, in_features, out_features, bias=True, block_size=32, prevent_zero=True, four_over_six=False,
-                 elem_format="e2m1", scale_format="e4m3", use_hierarchical=False, hadamard_size=0, hadamard_seed=42):
+                 elem_format="e2m1", scale_format="e4m3", use_hierarchical=False, hadamard_size=0, hadamard_seed=42,
+                 clip_percentile=None, rounding=None):
         super().__init__(in_features, out_features, bias)
         self.block_size = block_size
         self.prevent_zero = prevent_zero
@@ -332,6 +352,8 @@ class TorchMXLinear(nn.Linear):
             
         self.hadamard_size = hadamard_size
         self.hadamard_seed = hadamard_seed
+        self.clip_percentile = clip_percentile
+        self.rounding = rounding
         
     def forward(self, input):
         w = self.weight
@@ -342,16 +364,16 @@ class TorchMXLinear(nn.Linear):
         else:
             x_rot, w_rot = x, w
             
-        q_weight, _, _, _ = quantize_mx_torch(w_rot, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical)
-        q_input, _, _, _ = quantize_mx_torch(x_rot, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical)
+        q_weight, _, _, _ = quantize_mx_torch(w_rot, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+        q_input, _, _, _ = quantize_mx_torch(x_rot, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
         
         return F.linear(q_input, q_weight, self.bias)
 
 def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
              elem_format="e2m1", scale_format="e4m3", num_steps=None, use_hierarchical=False,
-             hadamard_size=0, hadamard_seed=42):
+             hadamard_size=0, hadamard_seed=42, clip_percentile=None, rounding=None):
     
-    print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, elem_format={elem_format}, scale_format={scale_format}, num_steps={num_steps}, use_hierarchical={use_hierarchical}, hadamard_size={hadamard_size}, hadamard_seed={hadamard_seed}")
+    print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, elem_format={elem_format}, scale_format={scale_format}, num_steps={num_steps}, use_hierarchical={use_hierarchical}, hadamard_size={hadamard_size}, hadamard_seed={hadamard_seed}, clip_percentile={clip_percentile}, rounding={rounding}")
     
     tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16, trust_remote_code=True, device_map="cuda")
@@ -383,7 +405,8 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
                     module.in_features, module.out_features, module.bias is not None,
                     block_size=block_size, prevent_zero=prevent_zero, four_over_six=four_over_six,
                     elem_format=elem_format, scale_format=scale_format,
-                    use_hierarchical=use_hierarchical, hadamard_size=hadamard_size, hadamard_seed=hadamard_seed
+                    use_hierarchical=use_hierarchical, hadamard_size=hadamard_size, hadamard_seed=hadamard_seed,
+                    clip_percentile=clip_percentile, rounding=rounding
                 )
                 new_m.weight.data = module.weight.data
                 new_m.bias = module.bias
@@ -521,35 +544,56 @@ if __name__ == "__main__":
                 scale_format = "e8m0"
         if len(sys.argv) > 10:
             format = sys.argv[10]
+        clip_percentile = None
+        rounding = None
         if len(sys.argv) > 11 and sys.argv[11].lower() != "none":
             hadamard_size = int(sys.argv[11])
         if len(sys.argv) > 12 and sys.argv[12].lower() != "none":
             hadamard_seed = int(sys.argv[12])
+        if len(sys.argv) > 13 and sys.argv[13].lower() != "none":
+            clip_percentile = float(sys.argv[13])
+        if len(sys.argv) > 14 and sys.argv[14].lower() != "none":
+            rounding = sys.argv[14]
             
         elem_format = format
             
-        if scale_format == "e8m0":
-            option = f"mxfp4 ({elem_format})"
-            if four_over_six:
-                option += " + 4o6"
-        elif elem_format in ("int8", "int4"):
-            option = f"{elem_format}"
-            if four_over_six:
-                option += " + 4o6"
-            if prevent_zero:
-                option += " + PZ"
+        is_kitchen_sink = (use_hierarchical and four_over_six and rounding == "ceil" and hadamard_size == 32)
+        
+        if is_kitchen_sink:
+            if scale_format == "e8m0":
+                option = f"mxfp4 ({elem_format}) + Hier+FoC+Ceil+RH32"
+            else:
+                option = f"{scale_format} + Hier+FoC+Ceil+RH32"
         else:
-            option = f"{scale_format}"
-            if four_over_six:
-                option += " + 4o6"
-            if prevent_zero:
-                option += " + PZ"
-            
-        if use_hierarchical:
-            option += " + H"
-            
-        if hadamard_size > 0:
-            option += f" + RH{hadamard_size}"
+            if scale_format == "e8m0":
+                option = f"mxfp4 ({elem_format})"
+                if four_over_six:
+                    option += " + 4o6"
+            elif elem_format in ("int8", "int4"):
+                option = f"{elem_format}"
+                if four_over_six:
+                    option += " + 4o6"
+                if prevent_zero:
+                    option += " + PZ"
+            else:
+                option = f"{scale_format}"
+                if four_over_six:
+                    option += " + 4o6"
+                if prevent_zero:
+                    option += " + PZ"
+                
+            if use_hierarchical:
+                option += " + H"
+                
+            if hadamard_size > 0:
+                option += f" + RH{hadamard_size}"
+                
+            if clip_percentile is not None:
+                pct_int = int(round(clip_percentile * 100))
+                option += f" + c{pct_int}"
+                
+            if rounding is not None:
+                option += f" + {rounding.capitalize()}"
             
         if block_sizes == [None]:
             base_ppl = None
@@ -560,7 +604,8 @@ if __name__ == "__main__":
             ppl = run_eval(
                 model_id, bs, prevent_zero=prevent_zero, four_over_six=four_over_six,
                 elem_format=elem_format, scale_format=scale_format, num_steps=num_steps,
-                use_hierarchical=use_hierarchical, hadamard_size=hadamard_size, hadamard_seed=hadamard_seed
+                use_hierarchical=use_hierarchical, hadamard_size=hadamard_size, hadamard_seed=hadamard_seed,
+                clip_percentile=clip_percentile, rounding=rounding
             )
             if base_ppl is None and bs is not None:
                 print(f"Baseline not found for {model_id}. Please run it first.")
@@ -569,3 +614,4 @@ if __name__ == "__main__":
     else:
         ppl = run_eval(model_id, None)
         update_csv_and_readme(model_id, None, ppl, None)
+

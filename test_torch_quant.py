@@ -404,6 +404,44 @@ def test_generate_float_grid():
 
     print("Case 16 passed!")
 
+def test_clipping():
+    print("\n--- Test Case 17: Verify Percentile Clipping ---")
+    x = torch.randn(1, 128, device="cuda", dtype=torch.float32)
+    x[0, 0] = 100.0
+    x[0, 1] = -100.0
+    
+    qx_no_clip, _, scale_no_clip, _ = quantize_mx_torch(x, block_size=128, elem_format="e2m1", scale_format="e8m0")
+    print(f"Scale without clipping: {scale_no_clip.item()}")
+    
+    qx_clip, _, scale_clip, _ = quantize_mx_torch(x, block_size=128, elem_format="e2m1", scale_format="e8m0", clip_percentile=0.95)
+    print(f"Scale with 95% clipping: {scale_clip.item()}")
+    
+    assert scale_clip < scale_no_clip, "Clipping did not reduce the scale!"
+    
+    max_rep_clip = 6.0 * scale_clip.item()
+    print(f"Max representable value with clipping: {max_rep_clip}")
+    print(f"Max absolute value in quantized output with clipping: {torch.max(torch.abs(qx_clip)).item()}")
+    
+    assert torch.max(torch.abs(qx_clip)) <= max_rep_clip + 1e-5, "Quantized values exceed max representable!"
+    print("Case 17 passed!")
+
+def test_rounding():
+    print("\n--- Test Case 18: Verify Rounding Modes ---")
+    x = torch.tensor([[6.1]], dtype=torch.float32).cuda()
+    
+    _, _, scale_ceil, _ = quantize_mx_torch(x, block_size=1, elem_format="e2m1", scale_format="e8m0", rounding="ceil")
+    _, _, scale_floor, _ = quantize_mx_torch(x, block_size=1, elem_format="e2m1", scale_format="e8m0", rounding="floor")
+    _, _, scale_round, _ = quantize_mx_torch(x, block_size=1, elem_format="e2m1", scale_format="e8m0", rounding="round")
+    
+    print(f"Scale (Ceil): {scale_ceil.item()}")
+    print(f"Scale (Floor): {scale_floor.item()}")
+    print(f"Scale (Round): {scale_round.item()}")
+    
+    assert scale_ceil.item() == 2.0, f"Expected Ceil scale 2.0, got {scale_ceil.item()}"
+    assert scale_floor.item() == 1.0, f"Expected Floor scale 1.0, got {scale_floor.item()}"
+    assert scale_round.item() == 1.0, f"Expected Round scale 1.0, got {scale_round.item()}"
+    print("Case 18 passed!")
+
 if __name__ == "__main__":
     test_torch_quant()
     test_against_jax()
@@ -420,3 +458,5 @@ if __name__ == "__main__":
     test_mxfp4_grid_snapping()
     test_torch_mx_linear_pipeline()
     test_generate_float_grid()
+    test_clipping()
+    test_rounding()
