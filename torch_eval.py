@@ -289,6 +289,8 @@ def quantize_mx_torch(x, block_size, elem_format="e2m1", scale_format="e4m3", pr
     if not four_over_six:
         max_abs = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
         max_abs = torch.clamp(max_abs, min=1e-7)
+        if clip_percentile is not None:
+            max_abs = max_abs * clip_percentile
         
         raw_scale = max_abs / max_rep
         
@@ -310,6 +312,8 @@ def quantize_mx_torch(x, block_size, elem_format="e2m1", scale_format="e4m3", pr
     else:
         max_abs = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
         max_abs = torch.clamp(max_abs, min=1e-7)
+        if clip_percentile is not None:
+            max_abs = max_abs * clip_percentile
         
         if scale_format == "e4m3":
             is_exponential = False
