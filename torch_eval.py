@@ -327,7 +327,7 @@ def had_mod_torch(x, w, had_size=256, seed=42, custom_rotation=None):
     if custom_rotation is not None:
         W, W_inv = get_custom_rotation_matrices_torch(custom_rotation, device=device, dtype=torch.float32)
         x_rot = apply_hadamard_torch(x.float(), W, is_lhs=True, apply_scale=False).to(dtype)
-        w_rot = apply_hadamard_torch(w.float(), W_inv, is_lhs=False, apply_scale=False).to(dtype)
+        w_rot = apply_hadamard_torch(w.float(), W_inv.t(), is_lhs=True, apply_scale=False).to(dtype)
         return x_rot, w_rot
         
     had_mat = get_hadamard_matrix(had_size, device=device, dtype=torch.float32)
