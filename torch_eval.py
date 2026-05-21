@@ -10,6 +10,7 @@ import subprocess
 import os
 import numpy as np
 import scipy.linalg
+import custom_rot_matrices as crm
 
 
 def parse_format_spec(format_name):
@@ -190,9 +191,145 @@ def apply_hadamard_torch(mat, had_mat, is_lhs, apply_scale=True):
         res = res / np.sqrt(h)
     return res
 
-def had_mod_torch(x, w, had_size=256, seed=42):
+def apply_asymmetric_torch(x, gammas):
+    y = x.clone().to(torch.float32)
+    norm = 1.0 / np.sqrt(2.0)
+    for stage in range(len(gammas)):
+        stride = 2 ** stage
+        # Reshape to block chunks of size 2 * stride
+        y_view = y.reshape(-1, 1, 2, stride)
+        x1 = y_view[:, :, 0, :]
+        x2 = y_view[:, :, 1, :]
+        new_x1 = (x1 + x2) * norm
+        new_x2 = (x1 - x2) * (norm * gammas[stage])
+        y_view = y_view.clone()
+        y_view[:, :, 0, :] = new_x1
+        y_view[:, :, 1, :] = new_x2
+        y = y_view.reshape(x.shape)
+    return y
+
+def inverse_asymmetric_torch(y, gammas):
+    x = y.clone().to(torch.float32)
+    norm = 1.0 / np.sqrt(2.0)
+    for stage in reversed(range(len(gammas))):
+        stride = 2 ** stage
+        x_view = x.reshape(-1, 1, 2, stride)
+        y1 = x_view[:, :, 0, :]
+        y2 = x_view[:, :, 1, :]
+        orig_x1 = (y1 + y2 / gammas[stage]) * norm
+        orig_x2 = (y1 - y2 / gammas[stage]) * norm
+        x_view = x_view.clone()
+        x_view[:, :, 0, :] = orig_x1
+        x_view[:, :, 1, :] = orig_x2
+        x = x_view.reshape(y.shape)
+    return x
+
+def apply_rotation_torch(x, thetas):
+    y = x.clone().to(torch.float32)
+    for stage in range(len(thetas)):
+        stride = 2 ** stage
+        y_view = y.reshape(-1, 1, 2, stride)
+        x1 = y_view[:, :, 0, :]
+        x2 = y_view[:, :, 1, :]
+        c = torch.cos(thetas[stage])
+        s = torch.sin(thetas[stage])
+        new_x1 = x1 * c + x2 * s
+        new_x2 = -x1 * s + x2 * c
+        y_view = y_view.clone()
+        y_view[:, :, 0, :] = new_x1
+        y_view[:, :, 1, :] = new_x2
+        y = y_view.reshape(x.shape)
+    return y
+
+def inverse_rotation_torch(y, thetas):
+    x = y.clone().to(torch.float32)
+    for stage in reversed(range(len(thetas))):
+        stride = 2 ** stage
+        x_view = x.reshape(-1, 1, 2, stride)
+        y1 = x_view[:, :, 0, :]
+        y2 = x_view[:, :, 1, :]
+        c = torch.cos(thetas[stage])
+        s = torch.sin(thetas[stage])
+        orig_x1 = y1 * c - y2 * s
+        orig_x2 = y1 * s + y2 * c
+        x_view = x_view.clone()
+        x_view[:, :, 0, :] = orig_x1
+        x_view[:, :, 1, :] = orig_x2
+        x = x_view.reshape(y.shape)
+    return x
+
+def get_custom_rotation_matrices_torch(name, device="cuda", dtype=torch.float32):
+    identity = torch.eye(32, device=device, dtype=torch.float32)
+    
+    if name == "fp4_tilted_2s":
+        gammas = torch.cat([torch.tensor(crm.FP4_GAMMAS_2, device=device), torch.tensor([1.0, 1.0, 1.0], device=device)])
+        W = apply_asymmetric_torch(identity, gammas)
+        W_inv = inverse_asymmetric_torch(identity, gammas)
+    elif name == "fp4_tilted_3s":
+        gammas = torch.cat([torch.tensor(crm.FP4_GAMMAS_3, device=device), torch.tensor([1.0, 1.0], device=device)])
+        W = apply_asymmetric_torch(identity, gammas)
+        W_inv = inverse_asymmetric_torch(identity, gammas)
+    elif name == "fp4_tilted_5s":
+        gammas = torch.tensor(crm.FP4_GAMMAS_5, device=device)
+        W = apply_asymmetric_torch(identity, gammas)
+        W_inv = inverse_asymmetric_torch(identity, gammas)
+    elif name == "fp4_rot_2s":
+        thetas = torch.cat([torch.tensor(crm.FP4_THETAS_2, device=device), torch.tensor([np.pi/4, np.pi/4, np.pi/4], device=device)])
+        W = apply_rotation_torch(identity, thetas)
+        W_inv = inverse_rotation_torch(identity, thetas)
+    elif name == "fp4_rot_3s":
+        thetas = torch.cat([torch.tensor(crm.FP4_THETAS_3, device=device), torch.tensor([np.pi/4, np.pi/4], device=device)])
+        W = apply_rotation_torch(identity, thetas)
+        W_inv = inverse_rotation_torch(identity, thetas)
+    elif name == "fp4_rot_5s":
+        thetas = torch.tensor(crm.FP4_THETAS_5, device=device)
+        W = apply_rotation_torch(identity, thetas)
+        W_inv = inverse_rotation_torch(identity, thetas)
+    elif name == "int4_tilted_2s":
+        gammas = torch.cat([torch.tensor(crm.INT4_GAMMAS_2, device=device), torch.tensor([1.0, 1.0, 1.0], device=device)])
+        W = apply_asymmetric_torch(identity, gammas)
+        W_inv = inverse_asymmetric_torch(identity, gammas)
+    elif name == "int4_tilted_3s":
+        gammas = torch.cat([torch.tensor(crm.INT4_GAMMAS_3, device=device), torch.tensor([1.0, 1.0], device=device)])
+        W = apply_asymmetric_torch(identity, gammas)
+        W_inv = inverse_asymmetric_torch(identity, gammas)
+    elif name == "int4_tilted_5s":
+        gammas = torch.tensor(crm.INT4_GAMMAS_5, device=device)
+        W = apply_asymmetric_torch(identity, gammas)
+        W_inv = inverse_asymmetric_torch(identity, gammas)
+    elif name == "int4_rot_2s":
+        thetas = torch.cat([torch.tensor(crm.INT4_THETAS_2, device=device), torch.tensor([np.pi/4, np.pi/4, np.pi/4], device=device)])
+        W = apply_rotation_torch(identity, thetas)
+        W_inv = inverse_rotation_torch(identity, thetas)
+    elif name == "int4_rot_3s":
+        thetas = torch.cat([torch.tensor(crm.INT4_THETAS_3, device=device), torch.tensor([np.pi/4, np.pi/4], device=device)])
+        W = apply_rotation_torch(identity, thetas)
+        W_inv = inverse_rotation_torch(identity, thetas)
+    elif name == "int4_rot_5s":
+        thetas = torch.tensor(crm.INT4_THETAS_5, device=device)
+        W = apply_rotation_torch(identity, thetas)
+        W_inv = inverse_rotation_torch(identity, thetas)
+    elif name == "int4_ks_320p":
+        W = torch.tensor(crm.W_DENSE_320, device=device, dtype=torch.float32)
+        W_inv = torch.linalg.inv(W)
+    elif name == "int4_rot_80p":
+        W = torch.tensor(crm.W_DENSE_80, device=device, dtype=torch.float32)
+        W_inv = W.T
+    else:
+        raise ValueError(f"Unknown custom rotation: {name}")
+        
+    return W.to(dtype), W_inv.to(dtype)
+
+def had_mod_torch(x, w, had_size=256, seed=42, custom_rotation=None):
     device = x.device
     dtype = x.dtype
+    
+    if custom_rotation is not None:
+        W, W_inv = get_custom_rotation_matrices_torch(custom_rotation, device=device, dtype=torch.float32)
+        x_rot = apply_hadamard_torch(x.float(), W, is_lhs=True, apply_scale=False).to(dtype)
+        w_rot = apply_hadamard_torch(w.float(), W_inv, is_lhs=False, apply_scale=False).to(dtype)
+        return x_rot, w_rot
+        
     had_mat = get_hadamard_matrix(had_size, device=device, dtype=torch.float32)
     
     if seed is not None:
@@ -345,7 +482,7 @@ def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_h
 class TorchMXLinear(nn.Linear):
     def __init__(self, in_features, out_features, bias=True, block_size=32, prevent_zero=True, four_over_six=False,
                  elem_format="e2m1", scale_format="e4m3", use_hierarchical=False, hadamard_size=0, hadamard_seed=42,
-                 clip_percentile=None, rounding=None):
+                 clip_percentile=None, rounding=None, custom_rotation=None):
         super().__init__(in_features, out_features, bias)
         self.block_size = block_size
         self.prevent_zero = prevent_zero
@@ -358,13 +495,14 @@ class TorchMXLinear(nn.Linear):
         self.hadamard_seed = hadamard_seed
         self.clip_percentile = clip_percentile
         self.rounding = rounding
+        self.custom_rotation = custom_rotation
         
     def forward(self, input):
         w = self.weight
         x = input
         
-        if self.hadamard_size > 0:
-            x_rot, w_rot = had_mod_torch(x, w, had_size=self.hadamard_size, seed=self.hadamard_seed)
+        if self.hadamard_size > 0 or self.custom_rotation is not None:
+            x_rot, w_rot = had_mod_torch(x, w, had_size=self.hadamard_size, seed=self.hadamard_seed, custom_rotation=self.custom_rotation)
         else:
             x_rot, w_rot = x, w
             
@@ -375,9 +513,9 @@ class TorchMXLinear(nn.Linear):
 
 def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
              elem_format="e2m1", scale_format="e4m3", num_steps=None, use_hierarchical=False,
-             hadamard_size=0, hadamard_seed=42, clip_percentile=None, rounding=None):
+             hadamard_size=0, hadamard_seed=42, clip_percentile=None, rounding=None, custom_rotation=None):
     
-    print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, elem_format={elem_format}, scale_format={scale_format}, num_steps={num_steps}, use_hierarchical={use_hierarchical}, hadamard_size={hadamard_size}, hadamard_seed={hadamard_seed}, clip_percentile={clip_percentile}, rounding={rounding}")
+    print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, elem_format={elem_format}, scale_format={scale_format}, num_steps={num_steps}, use_hierarchical={use_hierarchical}, hadamard_size={hadamard_size}, hadamard_seed={hadamard_seed}, clip_percentile={clip_percentile}, rounding={rounding}, custom_rotation={custom_rotation}")
     
     tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
     model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16, trust_remote_code=True, device_map="cuda")
@@ -410,7 +548,7 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
                     block_size=block_size, prevent_zero=prevent_zero, four_over_six=four_over_six,
                     elem_format=elem_format, scale_format=scale_format,
                     use_hierarchical=use_hierarchical, hadamard_size=hadamard_size, hadamard_seed=hadamard_seed,
-                    clip_percentile=clip_percentile, rounding=rounding
+                    clip_percentile=clip_percentile, rounding=rounding, custom_rotation=custom_rotation
                 )
                 new_m.weight.data = module.weight.data
                 new_m.bias = module.bias
@@ -558,6 +696,9 @@ if __name__ == "__main__":
             clip_percentile = float(sys.argv[13])
         if len(sys.argv) > 14 and sys.argv[14].lower() != "none":
             rounding = sys.argv[14]
+        custom_rotation = None
+        if len(sys.argv) > 15 and sys.argv[15].lower() != "none":
+            custom_rotation = sys.argv[15]
             
         elem_format = format
             
@@ -568,6 +709,29 @@ if __name__ == "__main__":
                 option = f"mxfp4 ({elem_format}) + Hier+FoC+Ceil+RH32"
             else:
                 option = f"{scale_format} + Hier+FoC+Ceil+RH32"
+        elif custom_rotation is not None:
+            rot_label = None
+            if "tilted_2s" in custom_rotation:
+                rot_label = "Tilted (2s)"
+            elif "tilted_3s" in custom_rotation:
+                rot_label = "Tilted (3s)"
+            elif "tilted_5s" in custom_rotation:
+                rot_label = "Tilted (5s)"
+            elif "rot_2s" in custom_rotation:
+                rot_label = "Rot (2s)"
+            elif "rot_3s" in custom_rotation:
+                rot_label = "Rot (3s)"
+            elif "rot_5s" in custom_rotation:
+                rot_label = "Rot (5s)"
+            elif "ks_320p" in custom_rotation:
+                rot_label = "KS (320p)"
+            elif "rot_80p" in custom_rotation:
+                rot_label = "Rot (80p)"
+                
+            if scale_format == "e8m0":
+                option = f"mxfp4 ({elem_format}) + {rot_label}"
+            else:
+                option = f"{scale_format} + {rot_label}"
         else:
             if scale_format == "e8m0":
                 option = f"mxfp4 ({elem_format})"
@@ -609,7 +773,7 @@ if __name__ == "__main__":
                 model_id, bs, prevent_zero=prevent_zero, four_over_six=four_over_six,
                 elem_format=elem_format, scale_format=scale_format, num_steps=num_steps,
                 use_hierarchical=use_hierarchical, hadamard_size=hadamard_size, hadamard_seed=hadamard_seed,
-                clip_percentile=clip_percentile, rounding=rounding
+                clip_percentile=clip_percentile, rounding=rounding, custom_rotation=custom_rotation
             )
             if base_ppl is None and bs is not None:
                 print(f"Baseline not found for {model_id}. Please run it first.")
