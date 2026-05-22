@@ -1,2 +1,4 @@
 __pycache__/
 *.log
+extracted_tensors_qwen/
+extracted_tensors_llama/
