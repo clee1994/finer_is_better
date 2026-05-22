@@ -83,51 +83,237 @@ This section is automatically updated by the evaluation script after each run. D
 
 ### Granite
 
-|                   |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |   BS=512 |
-|:------------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|---------:|
-| e4m3 + PZ         |       4.91 |    nan |    nan |    0.64 |  nan    |     nan |      nan |      nan |   nan    |
-| int8 + PZ         |       4.91 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |    -0.16 |
-| int8 + PZ + RH256 |       4.91 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |    -0.19 |
-| int4 + PZ         |       4.91 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |     5.78 |
-| int4 + PZ + RH256 |       4.91 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |     0.55 |
-| mxfp4 (e2m1)      |       4.91 |    nan |    nan |  nan    |    0.59 |     nan |      nan |      nan |   nan    |
-| mxfp4 (e1m2)      |       4.91 |    nan |    nan |  nan    |    1.04 |     nan |      nan |      nan |   nan    |
+|                                                            |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |   BS=512 |
+|:-----------------------------------------------------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|---------:|
+| e4m3 + PZ                                                  |       4.91 |    nan |    nan |    0.64 |  nan    |     nan |      nan |      nan |   nan    |
+| e4m3 + PZ + RH16                                           |     nan    |    nan |    nan |    0.35 |  nan    |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + RH16                                        |     nan    |    nan |    nan |  nan    |    0.4  |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + RH32                                        |     nan    |    nan |    nan |  nan    |    0.38 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + RH64                                        |     nan    |    nan |    nan |  nan    |    0.39 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + RH128                                       |     nan    |    nan |    nan |  nan    |    0.39 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + RH16                                        |     nan    |    nan |    nan |  nan    |    0.65 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + RH32                                        |     nan    |    nan |    nan |  nan    |    0.61 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + RH64                                        |     nan    |    nan |    nan |  nan    |    0.67 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + RH128                                       |     nan    |    nan |    nan |  nan    |    0.67 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Ceil                                        |     nan    |    nan |    nan |  nan    |    0.59 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Floor                                       |     nan    |    nan |    nan |  nan    |  181.41 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Ceil                                        |     nan    |    nan |    nan |  nan    |    1.04 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Floor                                       |     nan    |    nan |    nan |  nan    |  126.83 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Hier+FoC+Ceil+RH32                          |     nan    |    nan |    nan |  nan    |    0.38 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Hier+FoC+Ceil+RH32                          |     nan    |    nan |    nan |  nan    |    0.57 |     nan |      nan |      nan |   nan    |
+| int8 + PZ                                                  |       4.91 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |    -0.16 |
+| int8 + PZ + RH256                                          |       4.91 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |    -0.19 |
+| int4 + PZ                                                  |       4.91 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |     5.78 |
+| int4 + PZ + RH256                                          |       4.91 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |     0.55 |
+| mxfp4 (e2m1)                                               |       4.91 |    nan |    nan |  nan    |    0.59 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2)                                               |       4.91 |    nan |    nan |  nan    |    1.04 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + H                                           |     nan    |    nan |    nan |  nan    |    0.47 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + c90                                         |     nan    |    nan |    nan |  nan    |    0.54 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + c95                                         |     nan    |    nan |    nan |  nan    |    0.57 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + c99                                         |     nan    |    nan |    nan |  nan    |    0.59 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + c90                                         |     nan    |    nan |    nan |  nan    |    0.79 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + c95                                         |     nan    |    nan |    nan |  nan    |    0.89 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + c99                                         |     nan    |    nan |    nan |  nan    |    1.01 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + 4o6                                         |     nan    |    nan |    nan |  nan    |    0.73 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Tilted (2s)                                 |     nan    |    nan |    nan |  nan    |    0.49 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Tilted (3s)                                 |     nan    |    nan |    nan |  nan    |    0.53 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Tilted (5s)                                 |     nan    |    nan |    nan |  nan    |    0.59 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Rot (2s)                                    |     nan    |    nan |    nan |  nan    |    0.4  |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Rot (3s)                                    |     nan    |    nan |    nan |  nan    |    0.44 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Rot (5s)                                    |     nan    |    nan |    nan |  nan    |    0.47 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Tilted (2s)                                 |     nan    |    nan |    nan |  nan    |    0.68 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Tilted (3s)                                 |     nan    |    nan |    nan |  nan    |    1.42 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Tilted (5s)                                 |     nan    |    nan |    nan |  nan    |    0.72 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Rot (2s)                                    |     nan    |    nan |    nan |  nan    |    0.71 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Rot (3s)                                    |     nan    |    nan |    nan |  nan    |    0.7  |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Rot (5s)                                    |     nan    |    nan |    nan |  nan    |    0.72 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + KS (320p)                                   |     nan    |    nan |    nan |  nan    |    0.77 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Rot (80p)                                   |     nan    |    nan |    nan |  nan    |    0.66 |     nan |      nan |      nan |   nan    |
+| wgt e1m2, act e2m1                                         |     nan    |    nan |    nan |  nan    |    0.79 |     nan |      nan |      nan |   nan    |
+| wgt e1m2, act e2m1 + random hadamard                       |     nan    |    nan |    nan |  nan    |    0.53 |     nan |      nan |      nan |   nan    |
+| wgt e1m2, act e2m1 + hierarchical scales                   |     nan    |    nan |    nan |  nan    |    0.78 |     nan |      nan |      nan |   nan    |
+| wgt e1m2, act e2m1 + hierarchical scales + random hadamard |     nan    |    nan |    nan |  nan    |    0.55 |     nan |      nan |      nan |   nan    |
+| wgt e2m1, act e1m2                                         |     nan    |    nan |    nan |  nan    |    0.82 |     nan |      nan |      nan |   nan    |
+| wgt e2m1, act e1m2 + random hadamard                       |     nan    |    nan |    nan |  nan    |    0.45 |     nan |      nan |      nan |   nan    |
+| wgt e2m1, act e1m2 + hierarchical scales                   |     nan    |    nan |    nan |  nan    |    0.86 |     nan |      nan |      nan |   nan    |
+| wgt e2m1, act e1m2 + hierarchical scales + random hadamard |     nan    |    nan |    nan |  nan    |    0.42 |     nan |      nan |      nan |   nan    |
 
 ### Llama
 
-|                   |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |   BS=512 |
-|:------------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|---------:|
-| e4m3 + PZ         |       6.33 |    nan |    nan |    0.54 |  nan    |     nan |      nan |      nan |   nan    |
-| int8 + PZ         |       6.33 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |    -0.06 |
-| int8 + PZ + RH256 |       6.33 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |    -0.08 |
-| int4 + PZ         |       6.33 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |     3.32 |
-| int4 + PZ + RH256 |       6.33 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |     1.34 |
-| mxfp4 (e2m1)      |       6.33 |    nan |    nan |  nan    |    0.94 |     nan |      nan |      nan |   nan    |
-| mxfp4 (e1m2)      |       6.33 |    nan |    nan |  nan    |    1.81 |     nan |      nan |      nan |   nan    |
+|                                                            |   Baseline |   BS=4 |   BS=8 |   BS=16 |     BS=32 |   BS=64 |   BS=128 |   BS=256 |   BS=512 |
+|:-----------------------------------------------------------|-----------:|-------:|-------:|--------:|----------:|--------:|---------:|---------:|---------:|
+| e4m3 + PZ                                                  |       6.33 |    nan |    nan |    0.54 |    nan    |     nan |      nan |      nan |   nan    |
+| int8 + PZ                                                  |       6.33 |    nan |    nan |  nan    |    nan    |     nan |      nan |      nan |    -0.06 |
+| int8 + PZ + RH256                                          |       6.33 |    nan |    nan |  nan    |    nan    |     nan |      nan |      nan |    -0.08 |
+| int4 + PZ                                                  |       6.33 |    nan |    nan |  nan    |    nan    |     nan |      nan |      nan |     3.32 |
+| int4 + PZ + RH256                                          |       6.33 |    nan |    nan |  nan    |    nan    |     nan |      nan |      nan |     1.34 |
+| mxfp4 (e2m1)                                               |       6.33 |    nan |    nan |  nan    |      0.94 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2)                                               |       6.33 |    nan |    nan |  nan    |      1.81 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Tilted (2s)                                 |     nan    |    nan |    nan |  nan    |      1.26 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Tilted (3s)                                 |     nan    |    nan |    nan |  nan    |      1.54 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Tilted (5s)                                 |     nan    |    nan |    nan |  nan    |      1.68 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Rot (2s)                                    |     nan    |    nan |    nan |  nan    |      1.16 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Rot (3s)                                    |     nan    |    nan |    nan |  nan    |      1.21 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Rot (5s)                                    |     nan    |    nan |    nan |  nan    |      1.25 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Tilted (2s)                                 |     nan    |    nan |    nan |  nan    |      1.77 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Tilted (3s)                                 |     nan    |    nan |    nan |  nan    |      1.74 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Tilted (5s)                                 |     nan    |    nan |    nan |  nan    |      2.01 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Rot (2s)                                    |     nan    |    nan |    nan |  nan    |      1.74 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Rot (3s)                                    |     nan    |    nan |    nan |  nan    |      1.7  |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Rot (5s)                                    |     nan    |    nan |    nan |  nan    |      1.84 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + KS (320p)                                   |     nan    |    nan |    nan |  nan    |      1.89 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Rot (80p)                                   |     nan    |    nan |    nan |  nan    |      1.86 |     nan |      nan |      nan |   nan    |
+| wgt e1m2, act e2m1                                         |     nan    |    nan |    nan |  nan    |      1.36 |     nan |      nan |      nan |   nan    |
+| wgt e1m2, act e2m1 + random hadamard                       |     nan    |    nan |    nan |  nan    |      1.45 |     nan |      nan |      nan |   nan    |
+| wgt e1m2, act e2m1 + hierarchical scales                   |     nan    |    nan |    nan |  nan    |      1.35 |     nan |      nan |      nan |   nan    |
+| wgt e1m2, act e2m1 + hierarchical scales + random hadamard |     nan    |    nan |    nan |  nan    |      1.34 |     nan |      nan |      nan |   nan    |
+| wgt e2m1, act e1m2                                         |     nan    |    nan |    nan |  nan    |      1.23 |     nan |      nan |      nan |   nan    |
+| wgt e2m1, act e1m2 + random hadamard                       |     nan    |    nan |    nan |  nan    |      1.12 |     nan |      nan |      nan |   nan    |
+| wgt e2m1, act e1m2 + hierarchical scales                   |     nan    |    nan |    nan |  nan    |      1.27 |     nan |      nan |      nan |   nan    |
+| wgt e2m1, act e1m2 + hierarchical scales + random hadamard |     nan    |    nan |    nan |  nan    |      1.06 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + H                                           |     nan    |    nan |    nan |  nan    |      1.81 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + 4o6                                         |     nan    |    nan |    nan |  nan    |      1.17 |     nan |      nan |      nan |   nan    |
+| e4m3 + PZ + RH16                                           |     nan    |    nan |    nan |    0.82 |    nan    |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + RH16                                        |     nan    |    nan |    nan |  nan    |      1.01 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + RH32                                        |     nan    |    nan |    nan |  nan    |      1    |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + RH64                                        |     nan    |    nan |    nan |  nan    |      1.01 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + RH128                                       |     nan    |    nan |    nan |  nan    |      0.97 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + RH16                                        |     nan    |    nan |    nan |  nan    |      1.68 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + RH32                                        |     nan    |    nan |    nan |  nan    |      1.65 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + RH64                                        |     nan    |    nan |    nan |  nan    |      1.62 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + RH128                                       |     nan    |    nan |    nan |  nan    |      1.69 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + c90                                         |     nan    |    nan |    nan |  nan    | 439639    |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + c95                                         |     nan    |    nan |    nan |  nan    | 243914    |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + c99                                         |     nan    |    nan |    nan |  nan    |  34426.1  |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + c90                                         |     nan    |    nan |    nan |  nan    | 427842    |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + c95                                         |     nan    |    nan |    nan |  nan    | 186848    |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + c99                                         |     nan    |    nan |    nan |  nan    |  26889.8  |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Ceil                                        |     nan    |    nan |    nan |  nan    |      0.94 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Floor                                       |     nan    |    nan |    nan |  nan    |    738.42 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Ceil                                        |     nan    |    nan |    nan |  nan    |      1.81 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Floor                                       |     nan    |    nan |    nan |  nan    |    399.14 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Hier+FoC+Ceil+RH32                          |     nan    |    nan |    nan |  nan    |      0.95 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Hier+FoC+Ceil+RH32                          |     nan    |    nan |    nan |  nan    |      1.52 |     nan |      nan |      nan |   nan    |
 
 ### DeepSeek
 
-|                   |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |   BS=512 |
-|:------------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|---------:|
-| e4m3 + PZ         |      12.39 |    nan |    nan |    0.55 |  nan    |     nan |      nan |      nan |   nan    |
-| int8 + PZ         |      12.39 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |    -0.09 |
-| int8 + PZ + RH256 |      12.39 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |    -0.1  |
-| int4 + PZ         |      12.39 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |     4.47 |
-| int4 + PZ + RH256 |      12.39 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |     1.64 |
-| mxfp4 (e2m1)      |      12.39 |    nan |    nan |  nan    |    1.35 |     nan |      nan |      nan |   nan    |
-| mxfp4 (e1m2)      |      12.39 |    nan |    nan |  nan    |    2    |     nan |      nan |      nan |   nan    |
+|                                                            |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |   BS=512 |
+|:-----------------------------------------------------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|---------:|
+| e4m3 + PZ                                                  |      12.39 |    nan |    nan |    0.55 |  nan    |     nan |      nan |      nan |   nan    |
+| e4m3 + 4o6 + PZ                                            |     nan    |    nan |    nan |    0.44 |  nan    |     nan |      nan |      nan |   nan    |
+| e4m3 + PZ + H                                              |     nan    |    nan |    nan |    0.54 |  nan    |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + H                                           |     nan    |    nan |    nan |  nan    |    2.07 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + 4o6                                         |     nan    |    nan |    nan |  nan    |    1.63 |     nan |      nan |      nan |   nan    |
+| e4m3 + PZ + RH16                                           |     nan    |    nan |    nan |    0.77 |  nan    |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + RH16                                        |     nan    |    nan |    nan |  nan    |    1.27 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + RH32                                        |     nan    |    nan |    nan |  nan    |    1.25 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + RH64                                        |     nan    |    nan |    nan |  nan    |    1.3  |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + RH128                                       |     nan    |    nan |    nan |  nan    |    1.34 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + RH16                                        |     nan    |    nan |    nan |  nan    |    1.88 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + RH32                                        |     nan    |    nan |    nan |  nan    |    1.8  |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + RH64                                        |     nan    |    nan |    nan |  nan    |    1.8  |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + RH128                                       |     nan    |    nan |    nan |  nan    |    1.86 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Ceil                                        |     nan    |    nan |    nan |  nan    |    1.35 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Floor                                       |     nan    |    nan |    nan |  nan    |  129.81 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Ceil                                        |     nan    |    nan |    nan |  nan    |    2    |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Floor                                       |     nan    |    nan |    nan |  nan    |   57.97 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Hier+FoC+Ceil+RH32                          |     nan    |    nan |    nan |  nan    |    1.29 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Hier+FoC+Ceil+RH32                          |     nan    |    nan |    nan |  nan    |    1.85 |     nan |      nan |      nan |   nan    |
+| int8 + PZ                                                  |      12.39 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |    -0.09 |
+| int8 + PZ + RH256                                          |      12.39 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |    -0.1  |
+| int4 + PZ                                                  |      12.39 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |     4.47 |
+| int4 + PZ + RH256                                          |      12.39 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |     1.64 |
+| mxfp4 (e2m1)                                               |      12.39 |    nan |    nan |  nan    |    1.35 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2)                                               |      12.39 |    nan |    nan |  nan    |    2    |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + H                                           |     nan    |    nan |    nan |  nan    |    1.26 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + 4o6                                         |     nan    |    nan |    nan |  nan    |    1.23 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + c90                                         |     nan    |    nan |    nan |  nan    |    1.23 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + c95                                         |     nan    |    nan |    nan |  nan    |    1.27 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + c99                                         |     nan    |    nan |    nan |  nan    |    1.32 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + c90                                         |     nan    |    nan |    nan |  nan    |    1.66 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + c95                                         |     nan    |    nan |    nan |  nan    |    1.81 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + c99                                         |     nan    |    nan |    nan |  nan    |    1.98 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Tilted (2s)                                 |     nan    |    nan |    nan |  nan    |    1.76 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Tilted (3s)                                 |     nan    |    nan |    nan |  nan    |    1.99 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Tilted (5s)                                 |     nan    |    nan |    nan |  nan    |    2.28 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Rot (2s)                                    |     nan    |    nan |    nan |  nan    |    1.63 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Rot (3s)                                    |     nan    |    nan |    nan |  nan    |    1.74 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Rot (5s)                                    |     nan    |    nan |    nan |  nan    |    1.68 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Tilted (2s)                                 |     nan    |    nan |    nan |  nan    |    1.97 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Tilted (3s)                                 |     nan    |    nan |    nan |  nan    |    2.06 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Tilted (5s)                                 |     nan    |    nan |    nan |  nan    |    2.51 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Rot (2s)                                    |     nan    |    nan |    nan |  nan    |    2.02 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Rot (3s)                                    |     nan    |    nan |    nan |  nan    |    2    |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Rot (5s)                                    |     nan    |    nan |    nan |  nan    |    2.09 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + KS (320p)                                   |     nan    |    nan |    nan |  nan    |    2.25 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Rot (80p)                                   |     nan    |    nan |    nan |  nan    |    1.99 |     nan |      nan |      nan |   nan    |
+| wgt e1m2, act e2m1                                         |     nan    |    nan |    nan |  nan    |    1.63 |     nan |      nan |      nan |   nan    |
+| wgt e1m2, act e2m1 + random hadamard                       |     nan    |    nan |    nan |  nan    |    1.62 |     nan |      nan |      nan |   nan    |
+| wgt e1m2, act e2m1 + hierarchical scales                   |     nan    |    nan |    nan |  nan    |    1.62 |     nan |      nan |      nan |   nan    |
+| wgt e1m2, act e2m1 + hierarchical scales + random hadamard |     nan    |    nan |    nan |  nan    |    1.7  |     nan |      nan |      nan |   nan    |
+| wgt e2m1, act e1m2                                         |     nan    |    nan |    nan |  nan    |    1.62 |     nan |      nan |      nan |   nan    |
+| wgt e2m1, act e1m2 + random hadamard                       |     nan    |    nan |    nan |  nan    |    1.32 |     nan |      nan |      nan |   nan    |
+| wgt e2m1, act e1m2 + hierarchical scales                   |     nan    |    nan |    nan |  nan    |    1.59 |     nan |      nan |      nan |   nan    |
+| wgt e2m1, act e1m2 + hierarchical scales + random hadamard |     nan    |    nan |    nan |  nan    |    1.35 |     nan |      nan |      nan |   nan    |
 
 ### Qwen
 
-|                   |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |   BS=512 |
-|:------------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|---------:|
-| e4m3 + PZ         |       5.36 |    nan |    nan |    0.55 |  nan    |     nan |      nan |      nan |   nan    |
-| int8 + PZ         |       5.36 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |     0.02 |
-| int8 + PZ + RH256 |       5.36 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |    -0    |
-| int4 + PZ         |       5.36 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |    16.08 |
-| int4 + PZ + RH256 |       5.36 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |     1.15 |
-| mxfp4 (e2m1)      |       5.36 |    nan |    nan |  nan    |    1.1  |     nan |      nan |      nan |   nan    |
-| mxfp4 (e1m2)      |       5.36 |    nan |    nan |  nan    |    1.79 |     nan |      nan |      nan |   nan    |
+|                                                            |   Baseline |   BS=4 |   BS=8 |   BS=16 |   BS=32 |   BS=64 |   BS=128 |   BS=256 |   BS=512 |
+|:-----------------------------------------------------------|-----------:|-------:|-------:|--------:|--------:|--------:|---------:|---------:|---------:|
+| e4m3 + PZ                                                  |       5.36 |    nan |    nan |    0.55 |  nan    |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + 4o6                                         |     nan    |    nan |    nan |  nan    |    1.23 |     nan |      nan |      nan |   nan    |
+| e4m3 + PZ + RH16                                           |     nan    |    nan |    nan |    0.68 |  nan    |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + RH16                                        |     nan    |    nan |    nan |  nan    |    0.88 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + RH32                                        |     nan    |    nan |    nan |  nan    |    0.88 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + RH64                                        |     nan    |    nan |    nan |  nan    |    0.89 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + RH128                                       |     nan    |    nan |    nan |  nan    |    0.88 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + RH16                                        |     nan    |    nan |    nan |  nan    |    1.29 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + RH32                                        |     nan    |    nan |    nan |  nan    |    1.29 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + RH64                                        |     nan    |    nan |    nan |  nan    |    1.28 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + RH128                                       |     nan    |    nan |    nan |  nan    |    1.34 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Ceil                                        |     nan    |    nan |    nan |  nan    |    1.1  |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Floor                                       |     nan    |    nan |    nan |  nan    |  577.15 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Ceil                                        |     nan    |    nan |    nan |  nan    |    1.79 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Floor                                       |     nan    |    nan |    nan |  nan    |  226.02 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Hier+FoC+Ceil+RH32                          |     nan    |    nan |    nan |  nan    |    0.87 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Hier+FoC+Ceil+RH32                          |     nan    |    nan |    nan |  nan    |    1.31 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + H                                           |     nan    |    nan |    nan |  nan    |    0.61 |     nan |      nan |      nan |   nan    |
+| int8 + PZ                                                  |       5.36 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |     0.02 |
+| int8 + PZ + RH256                                          |       5.36 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |    -0    |
+| int4 + PZ                                                  |       5.36 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |    16.08 |
+| int4 + PZ + RH256                                          |       5.36 |    nan |    nan |  nan    |  nan    |     nan |      nan |      nan |     1.15 |
+| mxfp4 (e2m1)                                               |       5.36 |    nan |    nan |  nan    |    1.1  |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2)                                               |       5.36 |    nan |    nan |  nan    |    1.79 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + H                                           |     nan    |    nan |    nan |  nan    |    1.09 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + 4o6                                         |     nan    |    nan |    nan |  nan    |    0.99 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + c90                                         |     nan    |    nan |    nan |  nan    |    1.01 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + c95                                         |     nan    |    nan |    nan |  nan    |    1.04 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + c99                                         |     nan    |    nan |    nan |  nan    |    1.08 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + c90                                         |     nan    |    nan |    nan |  nan    |    1.44 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + c95                                         |     nan    |    nan |    nan |  nan    |    1.59 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + c99                                         |     nan    |    nan |    nan |  nan    |    1.75 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Tilted (2s)                                 |     nan    |    nan |    nan |  nan    |    0.97 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Tilted (3s)                                 |     nan    |    nan |    nan |  nan    |    1.09 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Tilted (5s)                                 |     nan    |    nan |    nan |  nan    |    1.15 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Rot (2s)                                    |     nan    |    nan |    nan |  nan    |    0.96 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Rot (3s)                                    |     nan    |    nan |    nan |  nan    |    0.92 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e2m1) + Rot (5s)                                    |     nan    |    nan |    nan |  nan    |    0.94 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Tilted (2s)                                 |     nan    |    nan |    nan |  nan    |    1.31 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Tilted (3s)                                 |     nan    |    nan |    nan |  nan    |    1.35 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Tilted (5s)                                 |     nan    |    nan |    nan |  nan    |    1.47 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Rot (2s)                                    |     nan    |    nan |    nan |  nan    |    1.28 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Rot (3s)                                    |     nan    |    nan |    nan |  nan    |    1.27 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Rot (5s)                                    |     nan    |    nan |    nan |  nan    |    1.28 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + KS (320p)                                   |     nan    |    nan |    nan |  nan    |    1.32 |     nan |      nan |      nan |   nan    |
+| mxfp4 (e1m2) + Rot (80p)                                   |     nan    |    nan |    nan |  nan    |    1.3  |     nan |      nan |      nan |   nan    |
+| wgt e1m2, act e2m1                                         |     nan    |    nan |    nan |  nan    |    1.4  |     nan |      nan |      nan |   nan    |
+| wgt e1m2, act e2m1 + random hadamard                       |     nan    |    nan |    nan |  nan    |    1.15 |     nan |      nan |      nan |   nan    |
+| wgt e1m2, act e2m1 + hierarchical scales                   |     nan    |    nan |    nan |  nan    |    1.37 |     nan |      nan |      nan |   nan    |
+| wgt e1m2, act e2m1 + hierarchical scales + random hadamard |     nan    |    nan |    nan |  nan    |    1.16 |     nan |      nan |      nan |   nan    |
+| wgt e2m1, act e1m2                                         |     nan    |    nan |    nan |  nan    |    1.43 |     nan |      nan |      nan |   nan    |
+| wgt e2m1, act e1m2 + random hadamard                       |     nan    |    nan |    nan |  nan    |    0.99 |     nan |      nan |      nan |   nan    |
+| wgt e2m1, act e1m2 + hierarchical scales                   |     nan    |    nan |    nan |  nan    |    1.4  |     nan |      nan |      nan |   nan    |
+| wgt e2m1, act e1m2 + hierarchical scales + random hadamard |     nan    |    nan |    nan |  nan    |    0.98 |     nan |      nan |      nan |   nan    |
 
 ### Perplexity Gap All Models
 ![Perplexity Gap All Models](plots/gap_all_models.png)
