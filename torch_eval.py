@@ -741,9 +741,9 @@ if __name__ == "__main__":
             opt_tags = []
             if use_hierarchical:
                 if hadamard_size > 0:
-                    opt_tags.append("hierachical scales + random hadamard")
+                    opt_tags.append("hierarchical scales + random hadamard")
                 else:
-                    opt_tags.append("random hierachical scales")
+                    opt_tags.append("hierarchical scales")
             elif hadamard_size > 0:
                 opt_tags.append("random hadamard")
                 
