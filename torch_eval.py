@@ -423,7 +423,9 @@ def quantize_mx_torch(x, block_size, elem_format="e2m1", scale_format="e4m3", pr
         quant = grid[idx]
         return quant * torch.sign(clipped)
         
-    if not four_over_six:
+    foc_str = str(four_over_six).lower()
+    
+    if foc_str in ("false", "none", "0"):
         max_abs = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
         max_abs = torch.clamp(max_abs, min=1e-7)
         if clip_percentile is not None:
@@ -452,21 +454,38 @@ def quantize_mx_torch(x, block_size, elem_format="e2m1", scale_format="e4m3", pr
         if clip_percentile is not None:
             max_abs = max_abs * clip_percentile
         
-        if scale_format == "e4m3":
-            is_exponential = False
-        else:
-            spec = parse_format_spec(scale_format)
-            is_exponential = (spec["mbits"] == 0)
+        if "e1m2" in elem_format:
+            max_fp4 = 7.0
+            alt_max_fp4 = 5.0
+        else: # e2m1
+            max_fp4 = 6.0
+            alt_max_fp4 = 4.0
             
-        if is_exponential:
-            raw_scale = max_abs / max_rep
-            scale_4 = quantize_scale_simulate(raw_scale, format=scale_format, prevent_zero=prevent_zero, rounding="floor")
-            scale_6 = quantize_scale_simulate(raw_scale, format=scale_format, prevent_zero=prevent_zero, rounding="ceil")
+        if foc_str in ("floor_ceil", "foc"):
+            # Floor-or-Ceil bracketing strategy (strictly exponential style E8M0 bracketing)
+            ideal_scale = max_abs / max_fp4
+            log_ideal = torch.log2(ideal_scale)
+            
+            exp_floor = torch.floor(log_ideal)
+            exp_floor = torch.clamp(exp_floor, -127.0, 128.0)
+            
+            exp_ceil = torch.ceil(log_ideal)
+            exp_ceil = torch.clamp(exp_ceil, -127.0, 128.0)
+            
+            scale_4 = torch.pow(2.0, exp_floor)
+            scale_6 = torch.pow(2.0, exp_ceil)
         else:
-            raw_scale_4 = (max_abs / max_rep) * 1.5
-            raw_scale_6 = max_abs / max_rep
-            scale_4 = quantize_scale_simulate(raw_scale_4, format=scale_format, prevent_zero=prevent_zero)
-            scale_6 = quantize_scale_simulate(raw_scale_6, format=scale_format, prevent_zero=prevent_zero)
+            # Classic 4o6 mapping strategy (uses global static rounding parameter)
+            s4_raw = max_abs / alt_max_fp4
+            s6_raw = max_abs / max_fp4
+            
+            if rounding is None:
+                effective_rounding = "ceil" if scale_format == "e8m0" else "round"
+            else:
+                effective_rounding = rounding
+                
+            scale_4 = quantize_scale_simulate(s4_raw, format=scale_format, prevent_zero=prevent_zero, rounding=effective_rounding)
+            scale_6 = quantize_scale_simulate(s6_raw, format=scale_format, prevent_zero=prevent_zero, rounding=effective_rounding)
             
         dequant, quant, scaling_factor, use_4 = mse_select_quant(x_reshaped, scale_4, scale_6, snap_fp4)
         
@@ -491,6 +510,12 @@ class TorchMXLinear(nn.Linear):
         self.elem_format = elem_format
         self.scale_format = scale_format
             
+        # Parse potential mixed formats (e.g. "e1m2,e2m1" -> wgt="e1m2", act="e2m1")
+        if "," in elem_format:
+            self.wgt_format, self.act_format = elem_format.split(",")
+        else:
+            self.wgt_format = self.act_format = elem_format
+
         self.hadamard_size = hadamard_size
         self.hadamard_seed = hadamard_seed
         self.clip_percentile = clip_percentile
@@ -506,8 +531,8 @@ class TorchMXLinear(nn.Linear):
         else:
             x_rot, w_rot = x, w
             
-        q_weight, _, _, _ = quantize_mx_torch(w_rot, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
-        q_input, _, _, _ = quantize_mx_torch(x_rot, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+        q_weight, _, _, _ = quantize_mx_torch(w_rot, self.block_size, elem_format=self.wgt_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+        q_input, _, _, _ = quantize_mx_torch(x_rot, self.block_size, elem_format=self.act_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
         
         return F.linear(q_input, q_weight, self.bias)
 
@@ -666,7 +691,15 @@ if __name__ == "__main__":
         if len(sys.argv) > 3:
             prevent_zero = sys.argv[3].lower() == "true"
         if len(sys.argv) > 4:
-            four_over_six = sys.argv[4].lower() == "true"
+            val = sys.argv[4].lower()
+            if val in ("true", "4o6"):
+                four_over_six = "4o6"
+            elif val in ("floor_ceil", "foc"):
+                four_over_six = "floor_ceil"
+            elif val == "false":
+                four_over_six = False
+            else:
+                four_over_six = val
         if len(sys.argv) > 5:
             val = sys.argv[5]
             if val.lower() == "true":
@@ -702,66 +735,83 @@ if __name__ == "__main__":
             
         elem_format = format
             
-        is_kitchen_sink = (use_hierarchical and four_over_six and rounding == "ceil" and hadamard_size == 32)
-        
-        if is_kitchen_sink:
-            if scale_format == "e8m0":
-                option = f"mxfp4 ({elem_format}) + Hier+FoC+Ceil+RH32"
-            else:
-                option = f"{scale_format} + Hier+FoC+Ceil+RH32"
-        elif custom_rotation is not None:
-            rot_label = None
-            if "tilted_2s" in custom_rotation:
-                rot_label = "Tilted (2s)"
-            elif "tilted_3s" in custom_rotation:
-                rot_label = "Tilted (3s)"
-            elif "tilted_5s" in custom_rotation:
-                rot_label = "Tilted (5s)"
-            elif "rot_2s" in custom_rotation:
-                rot_label = "Rot (2s)"
-            elif "rot_3s" in custom_rotation:
-                rot_label = "Rot (3s)"
-            elif "rot_5s" in custom_rotation:
-                rot_label = "Rot (5s)"
-            elif "ks_320p" in custom_rotation:
-                rot_label = "KS (320p)"
-            elif "rot_80p" in custom_rotation:
-                rot_label = "Rot (80p)"
-                
-            if scale_format == "e8m0":
-                option = f"mxfp4 ({elem_format}) + {rot_label}"
-            else:
-                option = f"{scale_format} + {rot_label}"
-        else:
-            if scale_format == "e8m0":
-                option = f"mxfp4 ({elem_format})"
-                if four_over_six:
-                    option += " + 4o6"
-            elif elem_format in ("int8", "int4"):
-                option = f"{elem_format}"
-                if four_over_six:
-                    option += " + 4o6"
-                if prevent_zero:
-                    option += " + PZ"
-            else:
-                option = f"{scale_format}"
-                if four_over_six:
-                    option += " + 4o6"
-                if prevent_zero:
-                    option += " + PZ"
-                
+        if "," in elem_format:
+            w_fmt, a_fmt = elem_format.split(",")
+            base_lbl = f"wgt {w_fmt}, act {a_fmt}"
+            opt_tags = []
             if use_hierarchical:
-                option += " + H"
+                if hadamard_size > 0:
+                    opt_tags.append("hierachical scales + random hadamard")
+                else:
+                    opt_tags.append("random hierachical scales")
+            elif hadamard_size > 0:
+                opt_tags.append("random hadamard")
                 
-            if hadamard_size > 0:
-                option += f" + RH{hadamard_size}"
-                
-            if clip_percentile is not None:
-                pct_int = int(round(clip_percentile * 100))
-                option += f" + c{pct_int}"
-                
-            if rounding is not None:
-                option += f" + {rounding.capitalize()}"
+            if opt_tags:
+                option = f"{base_lbl} + " + " + ".join(opt_tags)
+            else:
+                option = base_lbl
+        else:
+            is_kitchen_sink = (use_hierarchical and (four_over_six in (True, "4o6", "floor_ceil", "foc")) and rounding == "ceil" and hadamard_size == 32)
+            
+            if is_kitchen_sink:
+                if scale_format == "e8m0":
+                    option = f"mxfp4 ({elem_format}) + Hier+FoC+Ceil+RH32"
+                else:
+                    option = f"{scale_format} + Hier+FoC+Ceil+RH32"
+            elif custom_rotation is not None:
+                rot_label = None
+                if "tilted_2s" in custom_rotation:
+                    rot_label = "Tilted (2s)"
+                elif "tilted_3s" in custom_rotation:
+                    rot_label = "Tilted (3s)"
+                elif "tilted_5s" in custom_rotation:
+                    rot_label = "Tilted (5s)"
+                elif "rot_2s" in custom_rotation:
+                    rot_label = "Rot (2s)"
+                elif "rot_3s" in custom_rotation:
+                    rot_label = "Rot (3s)"
+                elif "rot_5s" in custom_rotation:
+                    rot_label = "Rot (5s)"
+                elif "ks_320p" in custom_rotation:
+                    rot_label = "KS (320p)"
+                elif "rot_80p" in custom_rotation:
+                    rot_label = "Rot (80p)"
+                    
+                if scale_format == "e8m0":
+                    option = f"mxfp4 ({elem_format}) + {rot_label}"
+                else:
+                    option = f"{scale_format} + {rot_label}"
+            else:
+                foc_opt = ""
+                if four_over_six in (True, "true", "4o6"):
+                    foc_opt = " + 4o6"
+                elif four_over_six in ("floor_ceil", "foc"):
+                    foc_opt = " + FoC"
+                    
+                if scale_format == "e8m0":
+                    option = f"mxfp4 ({elem_format}){foc_opt}"
+                elif elem_format in ("int8", "int4"):
+                    option = f"{elem_format}{foc_opt}"
+                    if prevent_zero:
+                        option += " + PZ"
+                else:
+                    option = f"{scale_format}{foc_opt}"
+                    if prevent_zero:
+                        option += " + PZ"
+                    
+                if use_hierarchical:
+                    option += " + H"
+                    
+                if hadamard_size > 0:
+                    option += f" + RH{hadamard_size}"
+                    
+                if clip_percentile is not None:
+                    pct_int = int(round(clip_percentile * 100))
+                    option += f" + c{pct_int}"
+                    
+                if rounding is not None:
+                    option += f" + {rounding.capitalize()}"
             
         if block_sizes == [None]:
             base_ppl = None
