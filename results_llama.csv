@@ -45,3 +45,8 @@ Llama_ablate_seq_random_s128,,,,,,,0.8538369369506835,,
 Llama_ablate_seq_random_s64,,,,,,0.8934001159667968,,,
 Llama_ablate_seq_magnitude_s64,,,,,,0.8268765640258788,,,
 Llama_ablate_seq_magnitude_s128,,,,,,,0.7920054626464843,,
+Llama_ablate_feat_random_s64,,,,,,0.8941425514221191,,,
+Llama_ablate_feat_random_s128,,,,,,,0.8812612724304199,,
+Llama_ablate_feat_magnitude_s64,,,,,,0.793147964477539,,,
+Llama_ablate_feat_magnitude_s128,,,,,,,0.7533983421325683,,
+
