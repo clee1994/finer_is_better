@@ -116,6 +116,19 @@ def quant_torch(x, bits, axis):
     x_rounded = torch.round(x_scaled)
     return x_rounded / scale
 
+def quant_fp8_torch(x, axis):
+    # Dynamic dynamic scaled FP8 (e4m3) quantizer, no microscales/block-sizes
+    # Maps per-tensor (channel-wise/token-wise) relative to OCP FP8 max limit 448.0
+    scale = torch.max(torch.abs(x), dim=axis, keepdim=True).values
+    scale = torch.where(scale == 0.0, torch.ones_like(scale), scale)
+    
+    scale_factor = 448.0 / scale
+    
+    x_scaled = x * scale_factor
+    x_fp8 = quantize_fp8_simulate(x_scaled, prevent_zero=True, format="e4m3")
+    
+    return x_fp8 / scale_factor
+
 def dwt_2d_torch(x):
     assert x.shape[0] % 2 == 0
     x_reshaped = x.view(x.shape[0] // 2, 2, x.shape[1])
@@ -208,18 +221,20 @@ def stamp_matmul_mx_fp_torch(x, y, stamp_size=64):
     dwt_act = [dwt_act] + dwt_fin
     dwt_act = torch.cat(dwt_act, dim=0)
     
-    # 3. Quantize activations (Block-wise MXFP8 & MXFP4!)
-    act_q8_stamp, _, _, _ = quantize_mx_torch(
-        dwt_act[:stamp_size, :], 32, elem_format="e4m3", scale_format="e8m0", prevent_zero=True
-    )
+    # 3. Quantize activations (Standard Dynamic FP8 on Stamp, Block-wise MXFP4 on Rest!)
+    # Act Stamp -> Standard Dynamic Scaled FP8 (no microscales / block-size!)
+    act_q8_stamp = quant_fp8_torch(dwt_act[:stamp_size, :], 1)
+    
+    # Act Rest -> MXFP4 (e2m1 elements, e8m0 scales, BS=32)
     act_q4_rest, _, _, _ = quantize_mx_torch(
         dwt_act[stamp_size:, :], 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
     )
     
-    # 4. Quantize weights (Block-wise MXFP8 & MXFP4!)
-    wgt_q8, _, _, _ = quantize_mx_torch(
-        y, 32, elem_format="e4m3", scale_format="e8m0", prevent_zero=True
-    )
+    # 4. Quantize weights (Standard Dynamic FP8 on Stamp, Block-wise MXFP4 on Rest!)
+    # Weight Stamp -> Standard Dynamic Scaled FP8 (no microscales / block-size!)
+    wgt_q8 = quant_fp8_torch(y, 1)
+    
+    # Weight Rest -> MXFP4 (e2m1 elements, e8m0 scales, BS=32)
     wgt_q4, _, _, _ = quantize_mx_torch(
         y, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
     )
