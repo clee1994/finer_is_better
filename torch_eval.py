@@ -406,6 +406,90 @@ def stamp_feat_matmul_bf16_fp_torch(x, y, stamp_size=64):
         return out_spatial[:S, :]
     return out_spatial
 
+def ablate_seq_matmul_torch(x, y, stamp_size=64, strategy="random"):
+    S = x.shape[0]
+    
+    # Target stamp size limit cap
+    actual_stamp = min(stamp_size, S)
+    
+    if strategy == "random":
+        g = torch.Generator(device=x.device)
+        g.manual_seed(42)
+        perm = torch.randperm(S, generator=g, device=x.device)
+        lossless_indices = perm[:actual_stamp]
+        compressed_indices = perm[actual_stamp:]
+    elif strategy == "magnitude":
+        # Measure row outlier magnitude by Lmax token activations
+        row_magnitudes = torch.max(torch.abs(x), dim=1).values
+        sorted_indices = torch.argsort(row_magnitudes, descending=True)
+        lossless_indices = sorted_indices[:actual_stamp]
+        compressed_indices = sorted_indices[actual_stamp:]
+    else:
+        raise ValueError(f"Unknown ablation strategy: {strategy}")
+        
+    # Represent activations (Lossless BF16 on Stamp, Block-wise MXFP4 on Rest!)
+    act_bf16 = x[lossless_indices, :].to(torch.bfloat16)
+    act_mxfp4, _, _, _ = quantize_mx_torch(
+        x[compressed_indices, :], 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+    )
+    
+    # Represent weights (Entire matrix BF16 or MXFP4)
+    wgt_bf16 = y.to(torch.bfloat16)
+    wgt_mxfp4, _, _, _ = quantize_mx_torch(
+        y, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+    )
+    
+    # Direct index matrix multiplications
+    out = torch.empty(S, y.shape[0], dtype=x.dtype, device=x.device)
+    
+    if lossless_indices.numel() > 0:
+        out_q8 = torch.matmul(act_bf16, wgt_bf16.t())
+        out[lossless_indices, :] = out_q8.to(x.dtype)
+        
+    if compressed_indices.numel() > 0:
+        out_q4 = torch.matmul(act_mxfp4, wgt_mxfp4.t())
+        out[compressed_indices, :] = out_q4.to(x.dtype)
+        
+    return out
+
+def ablate_feat_matmul_torch(x, y, stamp_size=64, strategy="random"):
+    H = x.shape[1]
+    
+    actual_stamp = min(stamp_size, H)
+    
+    if strategy == "random":
+        g = torch.Generator(device=x.device)
+        g.manual_seed(42)
+        perm = torch.randperm(H, generator=g, device=x.device)
+        lossless_indices = perm[:actual_stamp]
+        compressed_indices = perm[actual_stamp:]
+    elif strategy == "magnitude":
+        # Measure weight columns outlier magnitude directly in static weights
+        col_magnitudes = torch.max(torch.abs(y), dim=0).values
+        sorted_indices = torch.argsort(col_magnitudes, descending=True)
+        lossless_indices = sorted_indices[:actual_stamp]
+        compressed_indices = sorted_indices[actual_stamp:]
+    else:
+        raise ValueError(f"Unknown ablation strategy: {strategy}")
+        
+    # Represent activations (Lossless BF16 on Stamp, Block-wise MXFP4 on Rest!)
+    act_bf16 = x[:, lossless_indices].to(torch.bfloat16)
+    act_mxfp4, _, _, _ = quantize_mx_torch(
+        x[:, compressed_indices], 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+    )
+    
+    # Represent weights (Lossless BF16 on Stamp, Block-wise MXFP4 on Rest!)
+    wgt_bf16 = y[:, lossless_indices].to(torch.bfloat16)
+    wgt_mxfp4, _, _, _ = quantize_mx_torch(
+        y[:, compressed_indices], 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+    )
+    
+    # Direct sum matrix multiplications
+    out_q8 = torch.matmul(act_bf16, wgt_bf16.t())
+    out_q4 = torch.matmul(act_mxfp4, wgt_mxfp4.t())
+    
+    return (out_q8 + out_q4).to(x.dtype)
+
 def quantize_scale_simulate(val, format="e4m3", prevent_zero=True, rounding="round"):
     if format == "e4m3":
         val_clipped = torch.clamp(val, max=448.0)
@@ -915,6 +999,46 @@ class TorchStampFeatLinear(nn.Linear):
             
         return out_3d
 
+class TorchAblateSeqLinear(nn.Linear):
+    def __init__(self, in_features, out_features, bias=True, stamp_size=64, strategy="random"):
+        super().__init__(in_features, out_features, bias)
+        self.stamp_size = stamp_size
+        self.strategy = strategy
+        
+    def forward(self, input):
+        init_shape = input.shape
+        x_2d = input.reshape(-1, init_shape[-1])
+        
+        out_2d = ablate_seq_matmul_torch(x_2d, self.weight, self.stamp_size, self.strategy)
+        
+        out_shape = init_shape[:-1] + (self.out_features,)
+        out_3d = out_2d.reshape(out_shape)
+        
+        if self.bias is not None:
+            out_3d = out_3d + self.bias
+            
+        return out_3d
+
+class TorchAblateFeatLinear(nn.Linear):
+    def __init__(self, in_features, out_features, bias=True, stamp_size=64, strategy="random"):
+        super().__init__(in_features, out_features, bias)
+        self.stamp_size = stamp_size
+        self.strategy = strategy
+        
+    def forward(self, input):
+        init_shape = input.shape
+        x_2d = input.reshape(-1, init_shape[-1])
+        
+        out_2d = ablate_feat_matmul_torch(x_2d, self.weight, self.stamp_size, self.strategy)
+        
+        out_shape = init_shape[:-1] + (self.out_features,)
+        out_3d = out_2d.reshape(out_shape)
+        
+        if self.bias is not None:
+            out_3d = out_3d + self.bias
+            
+        return out_3d
+
 def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
              elem_format="e2m1", scale_format="e4m3", num_steps=None, use_hierarchical=False,
              hadamard_size=0, hadamard_seed=42, clip_percentile=None, rounding=None, custom_rotation=None):
@@ -966,6 +1090,16 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
                     new_m = TorchStampFeatLinear(
                         module.in_features, module.out_features, module.bias is not None,
                         stamp_size=block_size
+                    )
+                elif elem_format == "ablate_seq":
+                    new_m = TorchAblateSeqLinear(
+                        module.in_features, module.out_features, module.bias is not None,
+                        stamp_size=block_size, strategy=rounding
+                    )
+                elif elem_format == "ablate_feat":
+                    new_m = TorchAblateFeatLinear(
+                        module.in_features, module.out_features, module.bias is not None,
+                        stamp_size=block_size, strategy=rounding
                     )
                 else:
                     new_m = TorchMXLinear(
@@ -1162,6 +1296,10 @@ if __name__ == "__main__":
                 option = f"stamp_bf16_s{block_sizes[0]}"
             elif elem_format == "stamp_feat":
                 option = f"stamp_feat_s{block_sizes[0]}"
+            elif elem_format == "ablate_seq":
+                option = f"ablate_seq_{rounding}_s{block_sizes[0]}"
+            elif elem_format == "ablate_feat":
+                option = f"ablate_feat_{rounding}_s{block_sizes[0]}"
             elif is_kitchen_sink:
                 if scale_format == "e8m0":
                     option = f"mxfp4 ({elem_format}) + Hier+FoC+Ceil+RH32"
