@@ -258,6 +258,69 @@ def stamp_matmul_mx_fp_torch(x, y, stamp_size=64):
         return out_inv_dwt[:S, :]
     return out_inv_dwt
 
+def stamp_matmul_bf16_fp_torch(x, y, stamp_size=64):
+    S = x.shape[0]
+    
+    # 1. Dynamic sequence length padding to 2048 (max evaluation seq_len)
+    if S < 2048:
+        pad_len = 2048 - S
+        last_row = x[-1:, :]
+        padding = last_row.repeat(pad_len, 1)
+        dwt_act = torch.cat((x, padding), dim=0)
+    else:
+        dwt_act = x
+        
+    assert dwt_act.shape[0] % 2 == 0
+    iters = math.log2(dwt_act.shape[0]) - math.log2(stamp_size)
+    
+    # 2. Forward DWT transform along activations sequence rows
+    dwt_fin = []
+    for _ in range(int(iters)):
+        dwt_act = dwt_2d_torch(dwt_act)
+        half = dwt_act.shape[0] // 2
+        dwt_fin = [dwt_act[half:, :]] + dwt_fin
+        dwt_act = dwt_act[:half, :]
+        
+    dwt_act = [dwt_act] + dwt_fin
+    dwt_act = torch.cat(dwt_act, dim=0)
+    
+    # 3. Represent activations (Lossless BF16 on Stamp, Block-wise MXFP4 on Rest!)
+    # Act Stamp -> Native Lossless BF16! (No scaling / rounding!)
+    act_q8_stamp = dwt_act[:stamp_size, :].to(torch.bfloat16)
+    
+    # Act Rest -> MXFP4 (e2m1 elements, e8m0 scales, BS=32)
+    act_q4_rest, _, _, _ = quantize_mx_torch(
+        dwt_act[stamp_size:, :], 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+    )
+    
+    # 4. Represent weights (Lossless BF16 on Stamp, Block-wise MXFP4 on Rest!)
+    # Weight Stamp -> Native Lossless BF16! (No scaling / rounding!)
+    wgt_q8 = y.to(torch.bfloat16)
+    
+    # Weight Rest -> MXFP4 (e2m1 elements, e8m0 scales, BS=32)
+    wgt_q4, _, _, _ = quantize_mx_torch(
+        y, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+    )
+    
+    # 5. Perform the two matmuls
+    out_q8 = torch.matmul(act_q8_stamp, wgt_q8.t())
+    out_q4 = torch.matmul(act_q4_rest, wgt_q4.t())
+    
+    # 6. Concatenate outputs
+    out_mixed = torch.cat((out_q8, out_q4), dim=0)
+    
+    # 7. Undo DWT transform
+    out_inv_dwt = out_mixed.clone()
+    running_stamp = stamp_size
+    for _ in range(int(iters)):
+        running_stamp = running_stamp * 2
+        tmp_out = dwt_2d_inv_torch(out_inv_dwt[:running_stamp, :])
+        out_inv_dwt[:running_stamp, :] = tmp_out
+        
+    if S < 2048:
+        return out_inv_dwt[:S, :]
+    return out_inv_dwt
+
 def quantize_scale_simulate(val, format="e4m3", prevent_zero=True, rounding="round"):
     if format == "e4m3":
         val_clipped = torch.clamp(val, max=448.0)
@@ -729,6 +792,25 @@ class TorchStampMXLinear(nn.Linear):
             
         return out_3d
 
+class TorchStampBF16Linear(nn.Linear):
+    def __init__(self, in_features, out_features, bias=True, stamp_size=64):
+        super().__init__(in_features, out_features, bias)
+        self.stamp_size = stamp_size
+        
+    def forward(self, input):
+        init_shape = input.shape
+        x_2d = input.reshape(-1, init_shape[-1])
+        
+        out_2d = stamp_matmul_bf16_fp_torch(x_2d, self.weight, self.stamp_size)
+        
+        out_shape = init_shape[:-1] + (self.out_features,)
+        out_3d = out_2d.reshape(out_shape)
+        
+        if self.bias is not None:
+            out_3d = out_3d + self.bias
+            
+        return out_3d
+
 def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
              elem_format="e2m1", scale_format="e4m3", num_steps=None, use_hierarchical=False,
              hadamard_size=0, hadamard_seed=42, clip_percentile=None, rounding=None, custom_rotation=None):
@@ -768,6 +850,11 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
                     )
                 elif elem_format == "stamp_mx":
                     new_m = TorchStampMXLinear(
+                        module.in_features, module.out_features, module.bias is not None,
+                        stamp_size=block_size
+                    )
+                elif elem_format == "stamp_bf16":
+                    new_m = TorchStampBF16Linear(
                         module.in_features, module.out_features, module.bias is not None,
                         stamp_size=block_size
                     )
@@ -962,6 +1049,8 @@ if __name__ == "__main__":
                 option = f"stamp_s{block_sizes[0]}"
             elif elem_format == "stamp_mx":
                 option = f"stamp_mx_s{block_sizes[0]}"
+            elif elem_format == "stamp_bf16":
+                option = f"stamp_bf16_s{block_sizes[0]}"
             elif is_kitchen_sink:
                 if scale_format == "e8m0":
                     option = f"mxfp4 ({elem_format}) + Hier+FoC+Ceil+RH32"
