@@ -135,10 +135,21 @@ def dwt_2d_inv_torch(x):
     return out
 
 def stamp_matmul_torch(x, y, stamp_size=64):
-    assert x.shape[0] % 2 == 0
-    iters = math.log2(x.shape[0]) - math.log2(stamp_size)
+    S = x.shape[0]
     
-    dwt_act = x
+    # Dynamic sequence length padding to 2048 (max evaluation seq_len)
+    # Handles shorter/odd final wikitext segment steps robustly!
+    if S < 2048:
+        pad_len = 2048 - S
+        last_row = x[-1:, :]
+        padding = last_row.repeat(pad_len, 1)
+        dwt_act = torch.cat((x, padding), dim=0)
+    else:
+        dwt_act = x
+        
+    assert dwt_act.shape[0] % 2 == 0
+    iters = math.log2(dwt_act.shape[0]) - math.log2(stamp_size)
+    
     dwt_fin = []
     for _ in range(int(iters)):
         dwt_act = dwt_2d_torch(dwt_act)
@@ -167,6 +178,8 @@ def stamp_matmul_torch(x, y, stamp_size=64):
         tmp_out = dwt_2d_inv_torch(out_inv_dwt[:running_stamp, :])
         out_inv_dwt[:running_stamp, :] = tmp_out
         
+    if S < 2048:
+        return out_inv_dwt[:S, :]
     return out_inv_dwt
 
 def quantize_scale_simulate(val, format="e4m3", prevent_zero=True, rounding="round"):
