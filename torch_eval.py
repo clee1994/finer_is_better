@@ -147,6 +147,40 @@ def dwt_2d_inv_torch(x):
     out[1::2, :] = b
     return out
 
+def dwt_2d_columns_torch(x):
+    assert x.shape[1] % 2 == 0
+    x_reshaped = x.view(x.shape[0], x.shape[1] // 2, 2)
+    trend = (x_reshaped[:, :, 0] + x_reshaped[:, :, 1]) * (1.0 / math.sqrt(2))
+    detail = (x_reshaped[:, :, 0] - x_reshaped[:, :, 1]) * (1.0 / math.sqrt(2))
+    return torch.cat((trend, detail), dim=1)
+
+def pad_columns_to_power_of_2(x, target_pow_2=None):
+    H = x.shape[1]
+    if target_pow_2 is None:
+        if H < 1 or (H & (H - 1) == 0):
+            target_pow_2 = H
+        else:
+            target_pow_2 = 1 << H.bit_length()
+            
+    if target_pow_2 == H:
+        return x, target_pow_2
+        
+    pad_len = target_pow_2 - H
+    padding = torch.zeros(x.shape[0], pad_len, dtype=x.dtype, device=x.device)
+    return torch.cat((x, padding), dim=1), target_pow_2
+
+def recursive_column_dwt(x, iters):
+    dwt_act = x
+    dwt_fin = []
+    for _ in range(iters):
+        dwt_act = dwt_2d_columns_torch(dwt_act)
+        half = dwt_act.shape[1] // 2
+        dwt_fin = [dwt_act[:, half:]] + dwt_fin
+        dwt_act = dwt_act[:, :half]
+        
+    dwt_act = [dwt_act] + dwt_fin
+    return torch.cat(dwt_act, dim=1)
+
 def stamp_matmul_torch(x, y, stamp_size=64):
     S = x.shape[0]
     
@@ -320,6 +354,57 @@ def stamp_matmul_bf16_fp_torch(x, y, stamp_size=64):
     if S < 2048:
         return out_inv_dwt[:S, :]
     return out_inv_dwt
+
+def stamp_feat_matmul_bf16_fp_torch(x, y, stamp_size=64):
+    S = x.shape[0]
+    
+    # 1. Dynamic sequence-length padding to 2048 along axis 0 (rows)
+    if S < 2048:
+        pad_len = 2048 - S
+        last_row = x[-1:, :]
+        padding = last_row.repeat(pad_len, 1)
+        x_seq_padded = torch.cat((x, padding), dim=0)
+    else:
+        x_seq_padded = x
+        
+    # 2. Zero-pad hidden column dimension features axis 1 to next power of 2
+    x_padded, target_pow_2 = pad_columns_to_power_of_2(x_seq_padded)
+    y_padded, _ = pad_columns_to_power_of_2(y, target_pow_2)
+    
+    assert x_padded.shape[1] == target_pow_2
+    assert y_padded.shape[1] == target_pow_2
+    
+    # 3. Calculate DWT iteration steps along feature dimension
+    iters = math.log2(target_pow_2) - math.log2(stamp_size)
+    iters_int = int(iters)
+    
+    # 4. Apply forward DWT transform along column features
+    act_dwt = recursive_column_dwt(x_padded, iters_int)
+    wgt_dwt = recursive_column_dwt(y_padded, iters_int)
+    
+    # 5. Represent activations (Lossless BF16 on Stamp, Block-wise MXFP4 on Rest!)
+    act_q8_stamp = act_dwt[:, :stamp_size].to(torch.bfloat16)
+    act_q4_rest, _, _, _ = quantize_mx_torch(
+        act_dwt[:, stamp_size:], 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+    )
+    
+    # 6. Represent weights (Lossless BF16 on Stamp, Block-wise MXFP4 on Rest!)
+    wgt_q8 = wgt_dwt[:, :stamp_size].to(torch.bfloat16)
+    wgt_q4, _, _, _ = quantize_mx_torch(
+        wgt_dwt[:, stamp_size:], 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+    )
+    
+    # 7. Perform the two matmuls directly in feature frequency space
+    out_q8 = torch.matmul(act_q8_stamp, wgt_q8.t())
+    out_q4 = torch.matmul(act_q4_rest, wgt_q4.t())
+    
+    # 8. Sum the outputs (natively reconstructs spatial domain!)
+    out_spatial = out_q8 + out_q4
+    
+    # 9. Slice off sequence-length padding to recover original token sequence length S
+    if S < 2048:
+        return out_spatial[:S, :]
+    return out_spatial
 
 def quantize_scale_simulate(val, format="e4m3", prevent_zero=True, rounding="round"):
     if format == "e4m3":
@@ -811,6 +896,25 @@ class TorchStampBF16Linear(nn.Linear):
             
         return out_3d
 
+class TorchStampFeatLinear(nn.Linear):
+    def __init__(self, in_features, out_features, bias=True, stamp_size=64):
+        super().__init__(in_features, out_features, bias)
+        self.stamp_size = stamp_size
+        
+    def forward(self, input):
+        init_shape = input.shape
+        x_2d = input.reshape(-1, init_shape[-1])
+        
+        out_2d = stamp_feat_matmul_bf16_fp_torch(x_2d, self.weight, self.stamp_size)
+        
+        out_shape = init_shape[:-1] + (self.out_features,)
+        out_3d = out_2d.reshape(out_shape)
+        
+        if self.bias is not None:
+            out_3d = out_3d + self.bias
+            
+        return out_3d
+
 def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
              elem_format="e2m1", scale_format="e4m3", num_steps=None, use_hierarchical=False,
              hadamard_size=0, hadamard_seed=42, clip_percentile=None, rounding=None, custom_rotation=None):
@@ -855,6 +959,11 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
                     )
                 elif elem_format == "stamp_bf16":
                     new_m = TorchStampBF16Linear(
+                        module.in_features, module.out_features, module.bias is not None,
+                        stamp_size=block_size
+                    )
+                elif elem_format == "stamp_feat":
+                    new_m = TorchStampFeatLinear(
                         module.in_features, module.out_features, module.bias is not None,
                         stamp_size=block_size
                     )
@@ -1051,6 +1160,8 @@ if __name__ == "__main__":
                 option = f"stamp_mx_s{block_sizes[0]}"
             elif elem_format == "stamp_bf16":
                 option = f"stamp_bf16_s{block_sizes[0]}"
+            elif elem_format == "stamp_feat":
+                option = f"stamp_feat_s{block_sizes[0]}"
             elif is_kitchen_sink:
                 if scale_format == "e8m0":
                     option = f"mxfp4 ({elem_format}) + Hier+FoC+Ceil+RH32"
