@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import load_dataset
+import math
 import sys
 from tqdm import tqdm
 import pandas as pd
@@ -102,6 +103,71 @@ def get_element_format_grid(format_name, device="cuda"):
 def get_ue5m3_grid():
     grid, th, _ = get_element_format_grid("ue5m3")
     return grid, th
+
+# -------------------------------------------------------------------------
+# Discrete Wavelet Transform (Haar) & Stamp Matmul Quantization Logic
+# -------------------------------------------------------------------------
+def quant_torch(x, bits, axis):
+    scale = torch.max(torch.abs(x), dim=axis, keepdim=True).values
+    scale = torch.where(scale == 0.0, torch.ones_like(scale), scale)
+    scale = (1.0 / scale) * (2**bits - 1)
+    
+    x_scaled = x * scale
+    x_rounded = torch.round(x_scaled)
+    return x_rounded / scale
+
+def dwt_2d_torch(x):
+    assert x.shape[0] % 2 == 0
+    x_reshaped = x.view(x.shape[0] // 2, 2, x.shape[1])
+    trend = (x_reshaped[:, 0, :] + x_reshaped[:, 1, :]) * (1.0 / math.sqrt(2))
+    detail = (x_reshaped[:, 0, :] - x_reshaped[:, 1, :]) * (1.0 / math.sqrt(2))
+    return torch.cat((trend, detail), dim=0)
+
+def dwt_2d_inv_torch(x):
+    assert x.shape[0] % 2 == 0
+    half = x.shape[0] // 2
+    a = (x[:half, :] + x[half:, :]) * (1.0 / math.sqrt(2))
+    b = (x[:half, :] - x[half:, :]) * (1.0 / math.sqrt(2))
+    
+    out = torch.empty_like(x)
+    out[0::2, :] = a
+    out[1::2, :] = b
+    return out
+
+def stamp_matmul_torch(x, y, stamp_size=64):
+    assert x.shape[0] % 2 == 0
+    iters = math.log2(x.shape[0]) - math.log2(stamp_size)
+    
+    dwt_act = x
+    dwt_fin = []
+    for _ in range(int(iters)):
+        dwt_act = dwt_2d_torch(dwt_act)
+        half = dwt_act.shape[0] // 2
+        dwt_fin = [dwt_act[half:, :]] + dwt_fin
+        dwt_act = dwt_act[:half, :]
+        
+    dwt_act = [dwt_act] + dwt_fin
+    dwt_act = torch.cat(dwt_act, dim=0)
+    
+    act_q8_64 = quant_torch(dwt_act[:stamp_size, :], 8, 1)
+    act_q4_rest = quant_torch(dwt_act[stamp_size:, :], 4, 1)
+    
+    wgt_q8 = quant_torch(y, 8, 1)
+    wgt_q4 = quant_torch(y, 4, 1)
+    
+    out_q8 = torch.matmul(act_q8_64, wgt_q8.t())
+    out_q4 = torch.matmul(act_q4_rest, wgt_q4.t())
+    
+    out_mixed = torch.cat((out_q8, out_q4), dim=0)
+    
+    out_inv_dwt = out_mixed.clone()
+    running_stamp = stamp_size
+    for _ in range(int(iters)):
+        running_stamp = running_stamp * 2
+        tmp_out = dwt_2d_inv_torch(out_inv_dwt[:running_stamp, :])
+        out_inv_dwt[:running_stamp, :] = tmp_out
+        
+    return out_inv_dwt
 
 def quantize_scale_simulate(val, format="e4m3", prevent_zero=True, rounding="round"):
     if format == "e4m3":
@@ -536,6 +602,25 @@ class TorchMXLinear(nn.Linear):
         
         return F.linear(q_input, q_weight, self.bias)
 
+class TorchStampLinear(nn.Linear):
+    def __init__(self, in_features, out_features, bias=True, stamp_size=64):
+        super().__init__(in_features, out_features, bias)
+        self.stamp_size = stamp_size
+        
+    def forward(self, input):
+        init_shape = input.shape
+        x_2d = input.reshape(-1, init_shape[-1])
+        
+        out_2d = stamp_matmul_torch(x_2d, self.weight, self.stamp_size)
+        
+        out_shape = init_shape[:-1] + (self.out_features,)
+        out_3d = out_2d.reshape(out_shape)
+        
+        if self.bias is not None:
+            out_3d = out_3d + self.bias
+            
+        return out_3d
+
 def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
              elem_format="e2m1", scale_format="e4m3", num_steps=None, use_hierarchical=False,
              hadamard_size=0, hadamard_seed=42, clip_percentile=None, rounding=None, custom_rotation=None):
@@ -568,13 +653,19 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
                           father_module = getattr(father_module, part)
                 
                 idx = idx + 1 if idx != 0 else idx
-                new_m = TorchMXLinear(
-                    module.in_features, module.out_features, module.bias is not None,
-                    block_size=block_size, prevent_zero=prevent_zero, four_over_six=four_over_six,
-                    elem_format=elem_format, scale_format=scale_format,
-                    use_hierarchical=use_hierarchical, hadamard_size=hadamard_size, hadamard_seed=hadamard_seed,
-                    clip_percentile=clip_percentile, rounding=rounding, custom_rotation=custom_rotation
-                )
+                if elem_format == "stamp":
+                    new_m = TorchStampLinear(
+                        module.in_features, module.out_features, module.bias is not None,
+                        stamp_size=block_size
+                    )
+                else:
+                    new_m = TorchMXLinear(
+                        module.in_features, module.out_features, module.bias is not None,
+                        block_size=block_size, prevent_zero=prevent_zero, four_over_six=four_over_six,
+                        elem_format=elem_format, scale_format=scale_format,
+                        use_hierarchical=use_hierarchical, hadamard_size=hadamard_size, hadamard_seed=hadamard_seed,
+                        clip_percentile=clip_percentile, rounding=rounding, custom_rotation=custom_rotation
+                    )
                 new_m.weight.data = module.weight.data
                 new_m.bias = module.bias
                 print(f"Replacing layer: {name}")
@@ -754,7 +845,9 @@ if __name__ == "__main__":
         else:
             is_kitchen_sink = (use_hierarchical and (four_over_six in (True, "4o6", "floor_ceil", "foc")) and rounding == "ceil" and hadamard_size == 32)
             
-            if is_kitchen_sink:
+            if elem_format == "stamp":
+                option = f"stamp_s{block_sizes[0]}"
+            elif is_kitchen_sink:
                 if scale_format == "e8m0":
                     option = f"mxfp4 ({elem_format}) + Hier+FoC+Ceil+RH32"
                 else:
