@@ -3,138 +3,388 @@ import torch.nn as nn
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from datasets import load_dataset
+import math
 import sys
 from tqdm import tqdm
 import pandas as pd
 import subprocess
 import os
+import numpy as np
+import scipy.linalg
 
-_UE5M3_GRID = None
-_UE5M3_TH = None
+
+def parse_format_spec(format_name):
+    fmt = format_name.lower()
+    if fmt == "e2m1":
+        return {"ebits": 2, "mbits": 1, "bias": 1, "has_inf_nan": False, "has_sign": True}
+    elif fmt == "e1m2":
+        return {"ebits": 1, "mbits": 2, "bias": -1, "has_inf_nan": False, "has_sign": True}
+    elif fmt == "ue5m3":
+        return {"ebits": 5, "mbits": 3, "bias": 15, "has_inf_nan": True, "has_sign": False}
+    elif fmt == "e8m0":
+        return {"ebits": 8, "mbits": 0, "bias": 127, "has_inf_nan": True, "has_sign": False}
+    elif fmt == "e4m3":
+        return {"ebits": 4, "mbits": 3, "bias": 7, "has_inf_nan": True, "has_sign": True}
+    elif fmt == "bf16":
+        return {"ebits": 8, "mbits": 7, "bias": 127, "has_inf_nan": True, "has_sign": True}
+    elif fmt in ("fp16", "f16"):
+        return {"ebits": 5, "mbits": 10, "bias": 15, "has_inf_nan": True, "has_sign": True}
+    
+    has_sign = True
+    if fmt.startswith("u"):
+        has_sign = False
+        fmt = fmt[1:]
+        
+    if fmt.startswith("e") and "m" in fmt:
+        parts = fmt[1:].split("m")
+        ebits = int(parts[0])
+        mbits = int(parts[1])
+        bias = (2 ** (ebits - 1)) - 1 if ebits > 0 else 0
+        has_inf_nan = True
+        return {"ebits": ebits, "mbits": mbits, "bias": bias, "has_inf_nan": has_inf_nan, "has_sign": has_sign}
+        
+    raise ValueError(f"Unknown format: {format_name}")
+
+def generate_float_grid(ebits, mbits, bias, has_inf_nan=True, device="cuda"):
+    grid = [0.0]
+    if mbits > 0:
+        sub_scale = 2.0 ** (1.0 - bias)
+        for m in range(2 ** mbits):
+            val = (m / (2 ** mbits)) * sub_scale
+            if val > 0.0:
+                grid.append(val)
+    
+    e_max = (2 ** ebits) - 2 if has_inf_nan else (2 ** ebits) - 1
+    for e in range(1, e_max + 1):
+        scale = 2.0 ** (e - bias)
+        if mbits > 0:
+            for m in range(2 ** mbits):
+                val = (1.0 + m / (2 ** mbits)) * scale
+                grid.append(val)
+        else:
+            grid.append(scale)
+            
+    grid = sorted(list(set(grid)))
+    grid_t = torch.tensor(grid, dtype=torch.float32, device=device)
+    
+    if mbits == 0:
+        th_t = (grid_t[:-1] + grid_t[1:]) / 2.0
+        if len(grid_t) > 2:
+            th_t[1:] = torch.sqrt(grid_t[1:-1] * grid_t[2:])
+    else:
+        th_t = (grid_t[:-1] + grid_t[1:]) / 2.0
+        
+    max_rep = grid_t[-1].item()
+    return grid_t, th_t, max_rep
+
+def get_element_format_grid(format_name, device="cuda"):
+    fmt = format_name.lower()
+    if fmt == "int8":
+        grid = torch.arange(128, dtype=torch.float32, device=device)
+        th = (grid[:-1] + grid[1:]) / 2.0
+        max_rep = 127.0
+        return grid, th, max_rep
+    elif fmt == "int4":
+        grid = torch.arange(8, dtype=torch.float32, device=device)
+        th = (grid[:-1] + grid[1:]) / 2.0
+        max_rep = 7.0
+        return grid, th, max_rep
+
+    spec = parse_format_spec(format_name)
+    return generate_float_grid(
+        ebits=spec["ebits"],
+        mbits=spec["mbits"],
+        bias=spec["bias"],
+        has_inf_nan=spec["has_inf_nan"],
+        device=device
+    )
 
 def get_ue5m3_grid():
-    global _UE5M3_GRID, _UE5M3_TH
-    if _UE5M3_GRID is None:
-        grid = []
-        # Subnormals (e=0)
-        for m in range(8):
-            val = (m / 8.0) * (2**-14)
-            grid.append(val)
-            
-        # Normals (e=1..30)
-        for e in range(1, 31):
-            for m in range(8):
-                val = (1.0 + m / 8.0) * (2**(e - 15))
-                grid.append(val)
-                
-        _UE5M3_GRID = torch.tensor(sorted(list(set(grid))), dtype=torch.float32).cuda()
-        _UE5M3_TH = (_UE5M3_GRID[:-1] + _UE5M3_GRID[1:]) / 2
-    return _UE5M3_GRID, _UE5M3_TH
+    grid, th, _ = get_element_format_grid("ue5m3")
+    return grid, th
 
-def quantize_fp8_simulate(val, prevent_zero=True, use_ue5m3=False):
-    if not use_ue5m3:
-        # Clamp to max value of float8_e4m3fn to prevent overflow to NaN
+# -------------------------------------------------------------------------
+# Discrete Wavelet Transform (Haar) & Stamp Matmul Quantization Logic
+# -------------------------------------------------------------------------
+def quant_torch(x, bits, axis):
+    scale = torch.max(torch.abs(x), dim=axis, keepdim=True).values
+    scale = torch.where(scale == 0.0, torch.ones_like(scale), scale)
+    scale = (1.0 / scale) * (2**bits - 1)
+    
+    x_scaled = x * scale
+    x_rounded = torch.round(x_scaled)
+    return x_rounded / scale
+
+def dwt_2d_torch(x):
+    assert x.shape[0] % 2 == 0
+    x_reshaped = x.view(x.shape[0] // 2, 2, x.shape[1])
+    trend = (x_reshaped[:, 0, :] + x_reshaped[:, 1, :]) * (1.0 / math.sqrt(2))
+    detail = (x_reshaped[:, 0, :] - x_reshaped[:, 1, :]) * (1.0 / math.sqrt(2))
+    return torch.cat((trend, detail), dim=0)
+
+def dwt_2d_inv_torch(x):
+    assert x.shape[0] % 2 == 0
+    half = x.shape[0] // 2
+    a = (x[:half, :] + x[half:, :]) * (1.0 / math.sqrt(2))
+    b = (x[:half, :] - x[half:, :]) * (1.0 / math.sqrt(2))
+    
+    out = torch.empty_like(x)
+    out[0::2, :] = a
+    out[1::2, :] = b
+    return out
+
+def stamp_matmul_torch(x, y, stamp_size=64):
+    assert x.shape[0] % 2 == 0
+    iters = math.log2(x.shape[0]) - math.log2(stamp_size)
+    
+    dwt_act = x
+    dwt_fin = []
+    for _ in range(int(iters)):
+        dwt_act = dwt_2d_torch(dwt_act)
+        half = dwt_act.shape[0] // 2
+        dwt_fin = [dwt_act[half:, :]] + dwt_fin
+        dwt_act = dwt_act[:half, :]
+        
+    dwt_act = [dwt_act] + dwt_fin
+    dwt_act = torch.cat(dwt_act, dim=0)
+    
+    act_q8_64 = quant_torch(dwt_act[:stamp_size, :], 8, 1)
+    act_q4_rest = quant_torch(dwt_act[stamp_size:, :], 4, 1)
+    
+    wgt_q8 = quant_torch(y, 8, 1)
+    wgt_q4 = quant_torch(y, 4, 1)
+    
+    out_q8 = torch.matmul(act_q8_64, wgt_q8.t())
+    out_q4 = torch.matmul(act_q4_rest, wgt_q4.t())
+    
+    out_mixed = torch.cat((out_q8, out_q4), dim=0)
+    
+    out_inv_dwt = out_mixed.clone()
+    running_stamp = stamp_size
+    for _ in range(int(iters)):
+        running_stamp = running_stamp * 2
+        tmp_out = dwt_2d_inv_torch(out_inv_dwt[:running_stamp, :])
+        out_inv_dwt[:running_stamp, :] = tmp_out
+        
+    return out_inv_dwt
+
+def quantize_scale_simulate(val, format="e4m3", prevent_zero=True, rounding="round"):
+    if format == "e4m3":
         val_clipped = torch.clamp(val, max=448.0)
         quant = val_clipped.to(torch.float8_e4m3fn).to(val.dtype)
         min_scale = 2**-9
-    else:
-        grid, th = get_ue5m3_grid()
-        # Use bucketize for O(log K) search instead of O(K) distance calculation!
-        idx = torch.bucketize(val, th)
+        if prevent_zero:
+            quant = torch.where(quant == 0.0, min_scale, quant)
+        return quant.reshape(val.shape)
+    elif format == "bf16":
+        quant = val.to(torch.bfloat16).to(val.dtype)
+        if prevent_zero:
+            # min positive normal for bf16 is 2^-126
+            min_scale = 2**-126
+            quant = torch.where(quant == 0.0, torch.tensor(min_scale, dtype=quant.dtype, device=quant.device), quant)
+        return quant.reshape(val.shape)
+    elif format in ("fp16", "f16"):
+        quant = val.to(torch.float16).to(val.dtype)
+        if prevent_zero:
+            # min positive normal for fp16 is 2^-14
+            min_scale = 2**-14
+            quant = torch.where(quant == 0.0, torch.tensor(min_scale, dtype=quant.dtype, device=quant.device), quant)
+        return quant.reshape(val.shape)
+
+        
+    spec = parse_format_spec(format)
+    grid, th, max_rep = generate_float_grid(
+        ebits=spec["ebits"],
+        mbits=spec["mbits"],
+        bias=spec["bias"],
+        has_inf_nan=spec["has_inf_nan"],
+        device=val.device
+    )
+    
+    min_scale = grid[1].item() if len(grid) > 1 else 0.0
+    val_clipped = torch.clamp(val, max=max_rep)
+    
+    if rounding == "round":
+        idx = torch.bucketize(val_clipped, th)
         quant = grid[idx]
-        min_scale = 2**-17 # Smallest non-zero subnormal in UE5M3
+    elif rounding == "ceil":
+        idx = torch.bucketize(val_clipped, grid, right=False)
+        idx = torch.clamp(idx, max=len(grid) - 1)
+        quant = grid[idx]
+    elif rounding == "floor":
+        idx = torch.bucketize(val_clipped, grid, right=True)
+        idx = torch.clamp(idx - 1, min=0)
+        quant = grid[idx]
+    else:
+        raise ValueError(f"Unsupported rounding mode: {rounding}")
         
     if prevent_zero:
         quant = torch.where(quant == 0.0, min_scale, quant)
-    
+        
     return quant.reshape(val.shape)
 
+def quantize_fp8_simulate(val, prevent_zero=True, format="e4m3"):
+    return quantize_scale_simulate(val, format=format, prevent_zero=prevent_zero, rounding="round")
+
 # -------------------------------------------------------------------------
-# Quantization Logic (Pure PyTorch Simulation)
+# MXFP4 and Hadamard Transform Logic
 # -------------------------------------------------------------------------
-def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_ue5m3=False, use_hierarchical=False):
+def get_hadamard_matrix(n, device="cuda", dtype=torch.float32):
+    if n < 1 or (n & (n - 1) != 0):
+        raise ValueError("n must be a power of 2.")
+    had = scipy.linalg.hadamard(n)
+    return torch.tensor(had, device=device, dtype=dtype)
+
+def apply_hadamard_torch(mat, had_mat, is_lhs, apply_scale=True):
+    h = had_mat.shape[0]
+    init_shape = mat.shape
+    if is_lhs:
+        # Mat is (..., K). Reshape to 2D: (N, K)
+        mat_2d = mat.reshape(-1, init_shape[-1])
+        d0, d1 = mat_2d.shape
+        mat_reshaped = mat_2d.reshape(d0, d1 // h, h)
+        res_reshaped = torch.matmul(mat_reshaped, had_mat)
+        res = res_reshaped.reshape(init_shape)
+    else:
+        # Mat is (K, Out)
+        d0, d1 = mat.shape
+        mat_reshaped = mat.reshape(d0 // h, h, d1)
+        res_reshaped = torch.matmul(had_mat.unsqueeze(0), mat_reshaped)
+        res = res_reshaped.reshape(init_shape)
+        
+    if apply_scale:
+        res = res / np.sqrt(h)
+    return res
+
+def had_mod_torch(x, w, had_size=256, seed=42):
+    device = x.device
+    dtype = x.dtype
+    had_mat = get_hadamard_matrix(had_size, device=device, dtype=torch.float32)
+    
+    if seed is not None:
+        g = torch.Generator(device=device)
+        g.manual_seed(seed)
+        
+        d1 = torch.randint(0, 2, (had_size,), generator=g, device=device).float() * 2.0 - 1.0
+        d2 = torch.randint(0, 2, (had_size,), generator=g, device=device).float() * 2.0 - 1.0
+        
+        d1_mat = torch.diag(d1)
+        d2_mat = torch.diag(d2)
+        had_mat = d1_mat @ had_mat @ d2_mat
+        
+    x_had = apply_hadamard_torch(x.float(), had_mat, is_lhs=True, apply_scale=True).to(dtype)
+    w_had = apply_hadamard_torch(w.float(), had_mat, is_lhs=True, apply_scale=True).to(dtype)
+    
+    return x_had, w_had
+
+def mse_select_quant(x, scale_a, scale_b, snap_fn):
+    # Safe division for scale_a
+    safe_scale_a = torch.where(scale_a != 0.0, scale_a, torch.ones_like(scale_a))
+    scaled_a = x / safe_scale_a
+    scaled_a = torch.where(scale_a != 0.0, scaled_a, torch.zeros_like(scaled_a))
+    quant_a = snap_fn(scaled_a)
+    dequant_a = quant_a * scale_a
+    
+    # Safe division for scale_b
+    safe_scale_b = torch.where(scale_b != 0.0, scale_b, torch.ones_like(scale_b))
+    scaled_b = x / safe_scale_b
+    scaled_b = torch.where(scale_b != 0.0, scaled_b, torch.zeros_like(scaled_b))
+    quant_b = snap_fn(scaled_b)
+    dequant_b = quant_b * scale_b
+    
+    mse_a = torch.mean((x - dequant_a)**2, dim=-1, keepdim=True)
+    mse_b = torch.mean((x - dequant_b)**2, dim=-1, keepdim=True)
+    
+    use_a = mse_a < mse_b
+    dequant = torch.where(use_a, dequant_a, dequant_b)
+    quant = torch.where(use_a, quant_a, quant_b)
+    scale = torch.where(use_a, scale_a, scale_b)
+    
+    return dequant, quant, scale, use_a
+
+def quantize_mx_torch(x, block_size, elem_format="e2m1", scale_format="e4m3", prevent_zero=True, four_over_six=False, use_hierarchical=False, clip_percentile=None, rounding=None):
     init_shape = x.shape
     
+    grid, th, max_rep = get_element_format_grid(elem_format, device=x.device)
+    
     if use_hierarchical:
-        # Compute per-channel scale
-        # Reduce along all dimensions except dimension 0
         axes = list(range(len(x.shape)))
         axes.remove(0)
-        
         max_channel = torch.amax(torch.abs(x), dim=axes, keepdim=True)
         
-        if not use_ue5m3:
-            max_fp8 = 448.0
+        if scale_format == "e4m3":
+            max_scale_val = 448.0
         else:
-            grid, _ = get_ue5m3_grid()
-            max_fp8 = torch.max(grid).item()
+            spec = parse_format_spec(scale_format)
+            _, _, max_scale_val = generate_float_grid(
+                ebits=spec["ebits"],
+                mbits=spec["mbits"],
+                bias=spec["bias"],
+                has_inf_nan=spec["has_inf_nan"],
+                device=x.device
+            )
             
-        channel_scale = max_channel / max_fp8
-        # Avoid division by zero
+        channel_scale = max_channel / max_scale_val
         channel_scale = torch.where(channel_scale != 0, channel_scale, torch.ones_like(channel_scale))
-        
         x_norm = x / channel_scale
     else:
         x_norm = x
         
     x_reshaped = x_norm.reshape(-1, block_size)
     
-    def quantize_fp4(abs_clipped, sign):
-        th = torch.tensor([0.250125, 0.749765, 1.250495, 1.749515, 2.500990, 3.499030, 5.001970], dtype=torch.float32).cuda()
-        grid = torch.tensor([0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0], dtype=torch.float32).cuda()
+    def snap_fp4(val):
+        clipped = torch.clamp(val, min=-max_rep, max=max_rep)
+        abs_clipped = torch.abs(clipped)
         idx = torch.bucketize(abs_clipped, th)
         quant = grid[idx]
-        return quant * sign
+        return quant * torch.sign(clipped)
         
     if not four_over_six:
-        raw_scale = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values / 6.0
-        scaling_factor = quantize_fp8_simulate(raw_scale, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
+        max_abs = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
+        max_abs = torch.clamp(max_abs, min=1e-7)
+        if clip_percentile is not None:
+            max_abs = max_abs * clip_percentile
+        
+        raw_scale = max_abs / max_rep
+        
+        if rounding is None:
+            effective_rounding = "ceil" if scale_format == "e8m0" else "round"
+        else:
+            effective_rounding = rounding
+            
+        scaling_factor = quantize_scale_simulate(raw_scale, format=scale_format, prevent_zero=prevent_zero, rounding=effective_rounding)
         
         # Safe division to mimic JAX behavior without NaN propagation
         safe_scale = torch.where(scaling_factor != 0.0, scaling_factor, torch.ones_like(scaling_factor))
         scaled = x_reshaped / safe_scale
         scaled = torch.where(scaling_factor != 0.0, scaled, torch.zeros_like(scaled))
         
-        clipped = torch.clamp(scaled, min=-6.0, max=6.0)
-        
-        sign = torch.sign(clipped)
-        abs_clipped = torch.abs(clipped)
-        
-        quant = quantize_fp4(abs_clipped, sign)
+        quant = snap_fp4(scaled)
         dequant = quant * scaling_factor
         use_4 = torch.zeros_like(scaling_factor, dtype=torch.bool)
     else:
-        max_val = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
-        raw_scale_4 = (max_val / 6.0) * 1.5
-        raw_scale_6 = max_val / 6.0
+        max_abs = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
+        max_abs = torch.clamp(max_abs, min=1e-7)
+        if clip_percentile is not None:
+            max_abs = max_abs * clip_percentile
         
-        scale_4 = quantize_fp8_simulate(raw_scale_4, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
-        scale_6 = quantize_fp8_simulate(raw_scale_6, prevent_zero=prevent_zero, use_ue5m3=use_ue5m3)
-        
-        # Safe division for scale 4
-        safe_scale_4 = torch.where(scale_4 != 0.0, scale_4, torch.ones_like(scale_4))
-        scaled_4 = x_reshaped / safe_scale_4
-        scaled_4 = torch.where(scale_4 != 0.0, scaled_4, torch.zeros_like(scaled_4))
-        clipped_4 = torch.clamp(scaled_4, min=-6.0, max=6.0)
-        quant_4 = quantize_fp4(torch.abs(clipped_4), torch.sign(clipped_4))
-        dequant_4 = quant_4 * scale_4
-        
-        # Safe division for scale 6
-        safe_scale_6 = torch.where(scale_6 != 0.0, scale_6, torch.ones_like(scale_6))
-        scaled_6 = x_reshaped / safe_scale_6
-        scaled_6 = torch.where(scale_6 != 0.0, scaled_6, torch.zeros_like(scaled_6))
-        clipped_6 = torch.clamp(scaled_6, min=-6.0, max=6.0)
-        quant_6 = quantize_fp4(torch.abs(clipped_6), torch.sign(clipped_6))
-        dequant_6 = quant_6 * scale_6
-        
-        mse_4 = torch.mean((x_reshaped - dequant_4)**2, dim=-1, keepdim=True)
-        mse_6 = torch.mean((x_reshaped - dequant_6)**2, dim=-1, keepdim=True)
-        
-        use_4 = mse_4 < mse_6
-        
-        dequant = torch.where(use_4, dequant_4, dequant_6)
-        quant = torch.where(use_4, quant_4, quant_6)
-        scaling_factor = torch.where(use_4, scale_4, scale_6)
+        if scale_format == "e4m3":
+            is_exponential = False
+        else:
+            spec = parse_format_spec(scale_format)
+            is_exponential = (spec["mbits"] == 0)
+            
+        if is_exponential:
+            raw_scale = max_abs / max_rep
+            scale_4 = quantize_scale_simulate(raw_scale, format=scale_format, prevent_zero=prevent_zero, rounding="floor")
+            scale_6 = quantize_scale_simulate(raw_scale, format=scale_format, prevent_zero=prevent_zero, rounding="ceil")
+        else:
+            raw_scale_4 = (max_abs / max_rep) * 1.5
+            raw_scale_6 = max_abs / max_rep
+            scale_4 = quantize_scale_simulate(raw_scale_4, format=scale_format, prevent_zero=prevent_zero)
+            scale_6 = quantize_scale_simulate(raw_scale_6, format=scale_format, prevent_zero=prevent_zero)
+            
+        dequant, quant, scaling_factor, use_4 = mse_select_quant(x_reshaped, scale_4, scale_6, snap_fp4)
         
     dequant = dequant.reshape(init_shape)
     if use_hierarchical:
@@ -142,25 +392,67 @@ def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_u
         
     return dequant.to(x.dtype), quant.reshape(init_shape), scaling_factor, use_4
 
+def FP4_quant_torch(x, block_size, prevent_zero=True, four_over_six=False, use_hierarchical=False, scale_format="e4m3", format="e2m1"):
+    return quantize_mx_torch(x, block_size, elem_format=format, scale_format=scale_format, prevent_zero=prevent_zero, four_over_six=four_over_six, use_hierarchical=use_hierarchical)
+
 class TorchMXLinear(nn.Linear):
-    def __init__(self, in_features, out_features, bias=True, block_size=32, prevent_zero=True, four_over_six=False, use_ue5m3=False, use_hierarchical=False):
+    def __init__(self, in_features, out_features, bias=True, block_size=32, prevent_zero=True, four_over_six=False,
+                 elem_format="e2m1", scale_format="e4m3", use_hierarchical=False, hadamard_size=0, hadamard_seed=42,
+                 clip_percentile=None, rounding=None):
         super().__init__(in_features, out_features, bias)
         self.block_size = block_size
         self.prevent_zero = prevent_zero
         self.four_over_six = four_over_six
-        self.use_ue5m3 = use_ue5m3
         self.use_hierarchical = use_hierarchical
+        self.elem_format = elem_format
+        self.scale_format = scale_format
+            
+        self.hadamard_size = hadamard_size
+        self.hadamard_seed = hadamard_seed
+        self.clip_percentile = clip_percentile
+        self.rounding = rounding
         
     def forward(self, input):
-        q_weight, _, _, _ = FP4_quant_torch(self.weight, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical)
-        q_input, _, _, _ = FP4_quant_torch(input, self.block_size, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_ue5m3=self.use_ue5m3, use_hierarchical=self.use_hierarchical)
+        w = self.weight
+        x = input
+        
+        if self.hadamard_size > 0:
+            x_rot, w_rot = had_mod_torch(x, w, had_size=self.hadamard_size, seed=self.hadamard_seed)
+        else:
+            x_rot, w_rot = x, w
+            
+        q_weight, _, _, _ = quantize_mx_torch(w_rot, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+        q_input, _, _, _ = quantize_mx_torch(x_rot, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+        
         return F.linear(q_input, q_weight, self.bias)
 
-def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, use_ue5m3=False, num_steps=None, use_hierarchical=False):
-    print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, use_ue5m3={use_ue5m3}, num_steps={num_steps}, use_hierarchical={use_hierarchical}")
+class TorchStampLinear(nn.Linear):
+    def __init__(self, in_features, out_features, bias=True, stamp_size=64):
+        super().__init__(in_features, out_features, bias)
+        self.stamp_size = stamp_size
+        
+    def forward(self, input):
+        init_shape = input.shape
+        x_2d = input.reshape(-1, init_shape[-1])
+        
+        out_2d = stamp_matmul_torch(x_2d, self.weight, self.stamp_size)
+        
+        out_shape = init_shape[:-1] + (self.out_features,)
+        out_3d = out_2d.reshape(out_shape)
+        
+        if self.bias is not None:
+            out_3d = out_3d + self.bias
+            
+        return out_3d
+
+def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
+             elem_format="e2m1", scale_format="e4m3", num_steps=None, use_hierarchical=False,
+             hadamard_size=0, hadamard_seed=42, clip_percentile=None, rounding=None):
+    
+    print(f"Evaluating {model_id} with block size {block_size}, prevent_zero={prevent_zero}, four_over_six={four_over_six}, elem_format={elem_format}, scale_format={scale_format}, num_steps={num_steps}, use_hierarchical={use_hierarchical}, hadamard_size={hadamard_size}, hadamard_seed={hadamard_seed}, clip_percentile={clip_percentile}, rounding={rounding}")
     
     tokenizer = AutoTokenizer.from_pretrained(model_id, use_fast=True, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16, trust_remote_code=True).to("cuda")
+    model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16, trust_remote_code=True, device_map="cuda")
     
     if block_size is not None:
         head_name = None
@@ -182,10 +474,22 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False, 
                 father_module = model
                 if father_name:
                      for part in father_name.split("."):
-                         father_module = getattr(father_module, part)
+                          father_module = getattr(father_module, part)
                 
                 idx = idx + 1 if idx != 0 else idx
-                new_m = TorchMXLinear(module.in_features, module.out_features, module.bias is not None, block_size=block_size, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3, use_hierarchical=use_hierarchical)
+                if elem_format == "stamp":
+                    new_m = TorchStampLinear(
+                        module.in_features, module.out_features, module.bias is not None,
+                        stamp_size=block_size
+                    )
+                else:
+                    new_m = TorchMXLinear(
+                        module.in_features, module.out_features, module.bias is not None,
+                        block_size=block_size, prevent_zero=prevent_zero, four_over_six=four_over_six,
+                        elem_format=elem_format, scale_format=scale_format,
+                        use_hierarchical=use_hierarchical, hadamard_size=hadamard_size, hadamard_seed=hadamard_seed,
+                        clip_percentile=clip_percentile, rounding=rounding
+                    )
                 new_m.weight.data = module.weight.data
                 new_m.bias = module.bias
                 print(f"Replacing layer: {name}")
@@ -257,10 +561,12 @@ def update_csv_and_readme(model_id, bs, ppl, base_ppl, option="nvfp4", csv_suffi
         
     df.to_csv(path_csv)
     
-    subprocess.run(["git", "add", path_csv])
-    subprocess.run(["git", "commit", "-m", f"Update results for {row_name} BS={bs}"])
-    subprocess.run(["git", "pull"])
-    subprocess.run(["git", "push"])
+    if os.environ.get("SKIP_GIT", "false").lower() != "true":
+        subprocess.run(["git", "add", path_csv])
+        subprocess.run(["git", "commit", "-m", f"Update results for {row_name} BS={bs}"])
+        subprocess.run(["git", "pull"])
+        subprocess.run(["git", "push"])
+
 
 if __name__ == "__main__":
     model_id = sys.argv[1]
@@ -289,46 +595,89 @@ if __name__ == "__main__":
             
         prevent_zero = True
         four_over_six = False
-        use_ue5m3 = False
+        scale_format = "e4m3"
+        use_hierarchical = False
         num_steps = None
         csv_suffix = ""
+        format = "e2m1"
+        hadamard_size = 0
+        hadamard_seed = 42
         
         if len(sys.argv) > 3:
             prevent_zero = sys.argv[3].lower() == "true"
         if len(sys.argv) > 4:
             four_over_six = sys.argv[4].lower() == "true"
         if len(sys.argv) > 5:
-            use_ue5m3 = sys.argv[5].lower() == "true"
-            
-        use_hierarchical = False
+            val = sys.argv[5]
+            if val.lower() == "true":
+                scale_format = "ue5m3"
+            elif val.lower() == "false":
+                scale_format = "e4m3"
+            else:
+                scale_format = val
         if len(sys.argv) > 6:
             use_hierarchical = sys.argv[6].lower() == "true"
         if len(sys.argv) > 7 and sys.argv[7].lower() != "none":
             num_steps = int(sys.argv[7])
         if len(sys.argv) > 8:
             csv_suffix = sys.argv[8]
+        if len(sys.argv) > 9:
+            if sys.argv[9].lower() == "true":
+                scale_format = "e8m0"
+        if len(sys.argv) > 10:
+            format = sys.argv[10]
+        clip_percentile = None
+        rounding = None
+        if len(sys.argv) > 11 and sys.argv[11].lower() != "none":
+            hadamard_size = int(sys.argv[11])
+        if len(sys.argv) > 12 and sys.argv[12].lower() != "none":
+            hadamard_seed = int(sys.argv[12])
+        if len(sys.argv) > 13 and sys.argv[13].lower() != "none":
+            clip_percentile = float(sys.argv[13])
+        if len(sys.argv) > 14 and sys.argv[14].lower() != "none":
+            rounding = sys.argv[14]
             
-        if not prevent_zero and not four_over_six and not use_ue5m3:
-            option = "e4m3"
-        elif prevent_zero and not four_over_six and not use_ue5m3:
-            option = "e4m3 + PZ"
-        elif not prevent_zero and four_over_six and not use_ue5m3:
-            option = "e4m3 + 4o6"
-        elif prevent_zero and four_over_six and not use_ue5m3:
-            option = "e4m3 + 4o6 + PZ"
-        elif not prevent_zero and not four_over_six and use_ue5m3:
-            option = "ue5m3"
-        elif prevent_zero and not four_over_six and use_ue5m3:
-            option = "ue5m3 + PZ"
-        elif not prevent_zero and four_over_six and use_ue5m3:
-            option = "ue5m3 + 4o6"
-        elif prevent_zero and four_over_six and use_ue5m3:
-            option = "ue5m3 + 4o6 + PZ"
+        elem_format = format
+            
+        is_kitchen_sink = (use_hierarchical and four_over_six and rounding == "ceil" and hadamard_size == 32)
+        
+        if is_kitchen_sink:
+            if scale_format == "e8m0":
+                option = f"mxfp4 ({elem_format}) + Hier+FoC+Ceil+RH32"
+            else:
+                option = f"{scale_format} + Hier+FoC+Ceil+RH32"
         else:
-            option = "ue5m3_unknown"
-            
-        if use_hierarchical:
-            option += " + H"
+            if elem_format == "stamp":
+                option = f"stamp_s{block_sizes[0]}"
+            elif scale_format == "e8m0":
+                option = f"mxfp4 ({elem_format})"
+                if four_over_six:
+                    option += " + 4o6"
+            elif elem_format in ("int8", "int4"):
+                option = f"{elem_format}"
+                if four_over_six:
+                    option += " + 4o6"
+                if prevent_zero:
+                    option += " + PZ"
+            else:
+                option = f"{scale_format}"
+                if four_over_six:
+                    option += " + 4o6"
+                if prevent_zero:
+                    option += " + PZ"
+                
+            if use_hierarchical:
+                option += " + H"
+                
+            if hadamard_size > 0:
+                option += f" + RH{hadamard_size}"
+                
+            if clip_percentile is not None:
+                pct_int = int(round(clip_percentile * 100))
+                option += f" + c{pct_int}"
+                
+            if rounding is not None:
+                option += f" + {rounding.capitalize()}"
             
         if block_sizes == [None]:
             base_ppl = None
@@ -336,7 +685,12 @@ if __name__ == "__main__":
             base_ppl = read_base_from_csv(model_id)
         
         for bs in block_sizes:
-            ppl = run_eval(model_id, bs, prevent_zero=prevent_zero, four_over_six=four_over_six, use_ue5m3=use_ue5m3, num_steps=num_steps, use_hierarchical=use_hierarchical)
+            ppl = run_eval(
+                model_id, bs, prevent_zero=prevent_zero, four_over_six=four_over_six,
+                elem_format=elem_format, scale_format=scale_format, num_steps=num_steps,
+                use_hierarchical=use_hierarchical, hadamard_size=hadamard_size, hadamard_seed=hadamard_seed,
+                clip_percentile=clip_percentile, rounding=rounding
+            )
             if base_ppl is None and bs is not None:
                 print(f"Baseline not found for {model_id}. Please run it first.")
                 continue
@@ -344,3 +698,4 @@ if __name__ == "__main__":
     else:
         ppl = run_eval(model_id, None)
         update_csv_and_readme(model_id, None, ppl, None)
+
