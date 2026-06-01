@@ -129,6 +129,88 @@ def quant_fp8_torch(x, axis):
     
     return x_fp8 / scale_factor
 
+def get_ortho_matrix(N, transform_name, device="cuda", dtype=torch.float32):
+    i = torch.arange(N, device=device, dtype=dtype).unsqueeze(1)
+    j = torch.arange(N, device=device, dtype=dtype).unsqueeze(0)
+    if transform_name == "dct":
+        D = torch.sqrt(torch.tensor(2.0 / N, device=device, dtype=dtype)) * torch.cos(math.pi / N * (j + 0.5) * i)
+        D[0, :] = 1.0 / math.sqrt(N)
+        return D
+    elif transform_name == "dst":
+        S = torch.sqrt(torch.tensor(2.0 / (N + 1), device=device, dtype=dtype)) * torch.sin(math.pi / (N + 1) * (i + 1) * (j + 1))
+        return S
+    elif transform_name == "dht":
+        angle = 2.0 * math.pi * i * j / N
+        H = (1.0 / math.sqrt(N)) * (torch.cos(angle) + torch.sin(angle))
+        return H
+    else:
+        raise ValueError(f"Unknown orthonormal transform: {transform_name}")
+
+def transform_seq_matmul_bf16_fp_torch(x, y, stamp_size=64, transform_name="dct"):
+    S = x.shape[0]
+    D = get_ortho_matrix(S, transform_name, device=x.device, dtype=x.dtype)
+    x_trans = torch.matmul(D, x)
+    
+    act_q8_stamp = x_trans[:stamp_size, :].to(torch.bfloat16)
+    act_q4_rest, _, _, _ = quantize_mx_torch(
+        x_trans[stamp_size:, :], 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+    )
+    
+    wgt_q8 = y.to(torch.bfloat16)
+    wgt_q4, _, _, _ = quantize_mx_torch(
+        y, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+    )
+    
+    out_q8 = torch.matmul(act_q8_stamp, wgt_q8.t())
+    out_q4 = torch.matmul(act_q4_rest, wgt_q4.t())
+    
+    out_mixed = torch.cat((out_q8, out_q4), dim=0)
+    out_spatial = torch.matmul(D.t(), out_mixed)
+    return out_spatial
+
+def transform_feat_matmul_bf16_fp_torch(x, y, stamp_size=64, transform_name="dct"):
+    H = x.shape[1]
+    D = get_ortho_matrix(H, transform_name, device=x.device, dtype=x.dtype)
+    act_trans = torch.matmul(x, D.t())
+    wgt_trans = torch.matmul(y, D.t())
+    
+    act_q8_stamp = act_trans[:, :stamp_size].to(torch.bfloat16)
+    act_q4_rest, _, _, _ = quantize_mx_torch(
+        act_trans[:, stamp_size:], 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+    )
+    
+    wgt_q8 = wgt_trans[:, :stamp_size].to(torch.bfloat16)
+    wgt_q4, _, _, _ = quantize_mx_torch(
+        wgt_trans[:, stamp_size:], 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+    )
+    
+    out_q8 = torch.matmul(act_q8_stamp, wgt_q8.t())
+    out_q4 = torch.matmul(act_q4_rest, wgt_q4.t())
+    return (out_q8 + out_q4).to(x.dtype)
+
+def svd_matmul_bf16_fp_torch(x, y, stamp_size=64):
+    U, S_vals, Vh = torch.linalg.svd(x.float(), full_matrices=False)
+    Uw, Sw_vals, Vhw = torch.linalg.svd(y.float(), full_matrices=False)
+    
+    k = min(stamp_size, len(S_vals), len(Sw_vals))
+    
+    act_q8_stamp = (U[:, :k] * S_vals[:k]) @ Vh[:k, :]
+    wgt_q8_stamp = (Uw[:, :k] * Sw_vals[:k]) @ Vhw[:k, :]
+    
+    act_residual = x.float() - act_q8_stamp
+    wgt_residual = y.float() - wgt_q8_stamp
+    
+    act_q4_rest, _, _, _ = quantize_mx_torch(
+        act_residual.to(x.dtype), 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+    )
+    wgt_q4_rest, _, _, _ = quantize_mx_torch(
+        wgt_residual.to(y.dtype), 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+    )
+    
+    out_q8 = torch.matmul(act_q8_stamp.to(torch.bfloat16), wgt_q8_stamp.to(torch.bfloat16).t())
+    out_q4 = torch.matmul(act_q4_rest, wgt_q4_rest.t())
+    return (out_q8 + out_q4).to(x.dtype)
+
 def dwt_2d_torch(x):
     assert x.shape[0] % 2 == 0
     x_reshaped = x.view(x.shape[0] // 2, 2, x.shape[1])
@@ -1039,6 +1121,50 @@ class TorchAblateFeatLinear(nn.Linear):
             
         return out_3d
 
+class TorchTransformSeqLinear(nn.Linear):
+    def __init__(self, in_features, out_features, bias=True, stamp_size=64, transform_name="dct"):
+        super().__init__(in_features, out_features, bias)
+        self.stamp_size = stamp_size
+        self.transform_name = transform_name
+        
+    def forward(self, input):
+        init_shape = input.shape
+        x_2d = input.reshape(-1, init_shape[-1])
+        
+        if self.transform_name == "svd":
+            out_2d = svd_matmul_bf16_fp_torch(x_2d, self.weight, self.stamp_size)
+        else:
+            out_2d = transform_seq_matmul_bf16_fp_torch(x_2d, self.weight, self.stamp_size, self.transform_name)
+            
+        out_shape = init_shape[:-1] + (self.out_features,)
+        out_3d = out_2d.reshape(out_shape)
+        
+        if self.bias is not None:
+            out_3d = out_3d + self.bias
+        return out_3d
+
+class TorchTransformFeatLinear(nn.Linear):
+    def __init__(self, in_features, out_features, bias=True, stamp_size=64, transform_name="dct"):
+        super().__init__(in_features, out_features, bias)
+        self.stamp_size = stamp_size
+        self.transform_name = transform_name
+        
+    def forward(self, input):
+        init_shape = input.shape
+        x_2d = input.reshape(-1, init_shape[-1])
+        
+        if self.transform_name == "svd":
+            out_2d = svd_matmul_bf16_fp_torch(x_2d, self.weight, self.stamp_size)
+        else:
+            out_2d = transform_feat_matmul_bf16_fp_torch(x_2d, self.weight, self.stamp_size, self.transform_name)
+            
+        out_shape = init_shape[:-1] + (self.out_features,)
+        out_3d = out_2d.reshape(out_shape)
+        
+        if self.bias is not None:
+            out_3d = out_3d + self.bias
+        return out_3d
+
 def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
              elem_format="e2m1", scale_format="e4m3", num_steps=None, use_hierarchical=False,
              hadamard_size=0, hadamard_seed=42, clip_percentile=None, rounding=None, custom_rotation=None):
@@ -1100,6 +1226,18 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
                     new_m = TorchAblateFeatLinear(
                         module.in_features, module.out_features, module.bias is not None,
                         stamp_size=block_size, strategy=rounding
+                    )
+                elif elem_format.endswith("_seq"):
+                    t_name = elem_format[:-4]
+                    new_m = TorchTransformSeqLinear(
+                        module.in_features, module.out_features, module.bias is not None,
+                        stamp_size=block_size, transform_name=t_name
+                    )
+                elif elem_format.endswith("_feat"):
+                    t_name = elem_format[:-5]
+                    new_m = TorchTransformFeatLinear(
+                        module.in_features, module.out_features, module.bias is not None,
+                        stamp_size=block_size, transform_name=t_name
                     )
                 else:
                     new_m = TorchMXLinear(
@@ -1300,6 +1438,8 @@ if __name__ == "__main__":
                 option = f"ablate_seq_{rounding}_s{block_sizes[0]}"
             elif elem_format == "ablate_feat":
                 option = f"ablate_feat_{rounding}_s{block_sizes[0]}"
+            elif elem_format.endswith("_seq") or elem_format.endswith("_feat"):
+                option = f"{elem_format}_s{block_sizes[0]}"
             elif is_kitchen_sink:
                 if scale_format == "e8m0":
                     option = f"mxfp4 ({elem_format}) + Hier+FoC+Ceil+RH32"
