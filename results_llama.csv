@@ -49,4 +49,6 @@ Llama_ablate_feat_random_s64,,,,,,0.8941425514221191,,,
 Llama_ablate_feat_random_s128,,,,,,,0.8812612724304199,,
 Llama_ablate_feat_magnitude_s64,,,,,,0.793147964477539,,,
 Llama_ablate_feat_magnitude_s128,,,,,,,0.7533983421325683,,
-
+Llama_ioet_feat_s64,,,,,,0.6829194259643554,,,
+Llama_ioet_feat_s128,,,,,,,0.6110905838012695,,
+Llama_haar_contiguous_feat_s128,,,,,,,1.1092547607421874,,
