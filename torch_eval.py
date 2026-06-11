@@ -104,6 +104,12 @@ def get_ue5m3_grid():
     grid, th, _ = get_element_format_grid("ue5m3")
     return grid, th
 
+def get_signed_fp4_values(fp4_format, device="cuda"):
+    grid_pos, _, _ = get_element_format_grid(fp4_format, device=device)
+    grid_neg = -grid_pos[1:].flip(dims=[0])
+    fp4_vals = torch.cat([grid_neg, grid_pos])
+    return fp4_vals
+
 # -------------------------------------------------------------------------
 # Discrete Wavelet Transform (Haar) & Stamp Matmul Quantization Logic
 # -------------------------------------------------------------------------
@@ -129,6 +135,102 @@ def quant_fp8_torch(x, axis):
     
     return x_fp8 / scale_factor
 
+def apply_2pass_butterfly_torch(tensor, dim=-1):
+    scale = 0.5
+    assert tensor.shape[dim] == 32
+    
+    a1 = tensor.narrow(dim, 0, 16)
+    b1 = tensor.narrow(dim, 16, 16)
+    tensor_1 = torch.cat([a1 + b1, a1 - b1], dim=dim)
+    
+    orig_shape = tensor_1.shape
+    if dim != -1 and dim != len(orig_shape) - 1:
+        tensor_1 = tensor_1.transpose(dim, -1)
+        orig_shape = tensor_1.shape
+        
+    reshaped = tensor_1.reshape(orig_shape[:-1] + (2, 16))
+    
+    a2 = reshaped.narrow(-1, 0, 8)
+    b2 = reshaped.narrow(-1, 8, 8)
+    tensor_2 = torch.cat([a2 + b2, a2 - b2], dim=-1)
+    
+    tensor_out = tensor_2.reshape(orig_shape) * scale
+    
+    if dim != -1 and dim != len(orig_shape) - 1:
+        tensor_out = tensor_out.transpose(dim, -1)
+        
+    return tensor_out
+
+
+def get_haar_matrix(N, device="cuda", dtype=torch.float32):
+    if N == 1:
+        return torch.tensor([[1.0]], device=device, dtype=dtype)
+    
+    H_1 = torch.zeros(N, N, device=device, dtype=dtype)
+    for i in range(N // 2):
+        H_1[i, 2*i] = 1.0 / math.sqrt(2)
+        H_1[i, 2*i+1] = 1.0 / math.sqrt(2)
+        H_1[N//2 + i, 2*i] = 1.0 / math.sqrt(2)
+        H_1[N//2 + i, 2*i+1] = -1.0 / math.sqrt(2)
+        
+    if N > 2:
+        H_sub = get_haar_matrix(N // 2, device=device, dtype=dtype)
+        H_1[:N//2, :] = torch.matmul(H_sub, H_1[:N//2, :])
+        
+    return H_1
+
+def get_haar_l1_matrix(N, device="cuda", dtype=torch.float32):
+    H_1 = torch.zeros(N, N, device=device, dtype=dtype)
+    h = 1.0 / math.sqrt(2.0)
+    for i in range(N // 2):
+        H_1[i, 2*i] = h
+        H_1[i, 2*i+1] = h
+        H_1[N//2 + i, 2*i] = h
+        H_1[N//2 + i, 2*i+1] = -h
+    return H_1
+
+def make_grp128_l2_matrix(k_dim, device="cuda", dtype=torch.float32):
+    assert k_dim % 128 == 0, "Hidden dimension K must be a multiple of 128."
+    num_groups = k_dim // 128
+    
+    W128_L1 = get_haar_l1_matrix(128, device=device, dtype=dtype)
+    W64_L1 = get_haar_l1_matrix(64, device=device, dtype=dtype)
+    
+    W_block = torch.eye(128, dtype=dtype, device=device)
+    W_block[:64, :64] = W64_L1
+    W128_L2 = torch.matmul(W_block, W128_L1)
+    
+    Q = torch.kron(torch.eye(num_groups, dtype=dtype, device=device), W128_L2)
+    return Q
+
+def make_grp128_l2_packet_matrix(k_dim, device="cuda", dtype=torch.float32):
+    assert k_dim % 128 == 0, "Hidden dimension K must be a multiple of 128."
+    num_groups = k_dim // 128
+    
+    W128_L1 = get_haar_l1_matrix(128, device=device, dtype=dtype)
+    W64_L1 = get_haar_l1_matrix(64, device=device, dtype=dtype)
+    
+    W_block = torch.zeros((128, 128), dtype=dtype, device=device)
+    W_block[:64, :64] = W64_L1
+    W_block[64:, 64:] = W64_L1
+    W128_L2_packet = torch.matmul(W_block, W128_L1)
+    
+    Q = torch.kron(torch.eye(num_groups, dtype=dtype, device=device), W128_L2_packet)
+    return Q
+
+
+def hadamard_matrix_torch(n, device="cuda", dtype=torch.float32):
+    H = torch.tensor([[1.0]], device=device, dtype=dtype)
+    while H.shape[0] < n:
+        H = torch.cat([torch.cat([H, H], dim=1), torch.cat([H, -H], dim=1)], dim=0)
+    return H * (1.0 / math.sqrt(n))
+
+def sequency_ordered_hadamard(n, device="cuda", dtype=torch.float32):
+    H = hadamard_matrix_torch(n, device=device, dtype=dtype)
+    sign_changes = torch.sum((H[:, 1:] * H[:, :-1]) < 0, dim=1)
+    sorted_idx = torch.argsort(sign_changes)
+    return H[sorted_idx, :], sorted_idx
+
 def get_ortho_matrix(N, transform_name, device="cuda", dtype=torch.float32):
     i = torch.arange(N, device=device, dtype=dtype).unsqueeze(1)
     j = torch.arange(N, device=device, dtype=dtype).unsqueeze(0)
@@ -143,6 +245,15 @@ def get_ortho_matrix(N, transform_name, device="cuda", dtype=torch.float32):
         angle = 2.0 * math.pi * i * j / N
         H = (1.0 / math.sqrt(N)) * (torch.cos(angle) + torch.sin(angle))
         return H
+    elif transform_name == "haar":
+        return get_haar_matrix(N, device=device, dtype=dtype)
+    elif transform_name == "haar_grp128_l2":
+        return make_grp128_l2_matrix(N, device=device, dtype=dtype)
+    elif transform_name == "haar_grp128_l2_packet":
+        return make_grp128_l2_packet_matrix(N, device=device, dtype=dtype)
+    elif transform_name == "wht":
+        H_wht, _ = sequency_ordered_hadamard(N, device=device, dtype=dtype)
+        return H_wht
     else:
         raise ValueError(f"Unknown orthonormal transform: {transform_name}")
 
@@ -168,6 +279,54 @@ def transform_seq_matmul_bf16_fp_torch(x, y, stamp_size=64, transform_name="dct"
     out_spatial = torch.matmul(D.t(), out_mixed)
     return out_spatial
 
+def spec_feat_matmul_bf16_fp_torch(x, y, D, stamp_size=64, pattern="contiguous", stamp_indices=None):
+    H_pad = x.shape[1]
+    act_trans = torch.matmul(x, D.t())
+    wgt_trans = torch.matmul(y, D.t())
+    
+    if pattern == "contiguous":
+        stamp_idx = torch.arange(stamp_size, device=x.device)
+        rest_idx = torch.arange(stamp_size, H_pad, device=x.device)
+    elif pattern == "interleaved":
+        step = H_pad // stamp_size
+        stamp_idx = torch.arange(0, H_pad, step, device=x.device)[:stamp_size]
+        mask = torch.ones(H_pad, dtype=torch.bool, device=x.device)
+        mask[stamp_idx] = False
+        rest_idx = torch.arange(H_pad, device=x.device)[mask]
+    elif pattern == "calibrated":
+        assert stamp_indices is not None, "stamp_indices must be calibrated and provided!"
+        stamp_idx = stamp_indices
+        mask = torch.ones(H_pad, dtype=torch.bool, device=x.device)
+        mask[stamp_idx] = False
+        rest_idx = torch.arange(H_pad, device=x.device)[mask]
+    else:
+        raise ValueError(f"Unknown SPEC pattern: {pattern}")
+        
+    act_q8_stamp = act_trans[:, stamp_idx].to(torch.bfloat16)
+    Rest_size = len(rest_idx)
+    if Rest_size > 0:
+        act_q4_rest, _, _, _ = quantize_mx_torch(
+            act_trans[:, rest_idx], 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+        )
+    else:
+        act_q4_rest = torch.zeros(act_trans.shape[0], 0, device=x.device, dtype=x.dtype)
+        
+    wgt_q8 = wgt_trans[:, stamp_idx].to(torch.bfloat16)
+    if Rest_size > 0:
+        wgt_q4, _, _, _ = quantize_mx_torch(
+            wgt_trans[:, rest_idx], 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+        )
+    else:
+        wgt_q4 = torch.zeros(wgt_trans.shape[0], 0, device=x.device, dtype=x.dtype)
+        
+    out_q8 = torch.matmul(act_q8_stamp, wgt_q8.t())
+    if Rest_size > 0:
+        out_q4 = torch.matmul(act_q4_rest, wgt_q4.t())
+    else:
+        out_q4 = 0
+        
+    return (out_q8 + out_q4).to(x.dtype)
+
 def transform_feat_matmul_bf16_fp_torch(x, y, stamp_size=64, transform_name="dct"):
     H = x.shape[1]
     D = get_ortho_matrix(H, transform_name, device=x.device, dtype=x.dtype)
@@ -187,6 +346,55 @@ def transform_feat_matmul_bf16_fp_torch(x, y, stamp_size=64, transform_name="dct
     out_q8 = torch.matmul(act_q8_stamp, wgt_q8.t())
     out_q4 = torch.matmul(act_q4_rest, wgt_q4.t())
     return (out_q8 + out_q4).to(x.dtype)
+
+def one_level_dwt_columns_torch(x):
+    assert x.shape[1] % 2 == 0
+    trend = (x[:, 0::2] + x[:, 1::2]) * (1.0 / math.sqrt(2))
+    detail = (x[:, 0::2] - x[:, 1::2]) * (1.0 / math.sqrt(2))
+    return torch.cat((trend, detail), dim=1)
+
+def transform_iterative_matmul_bf16_fp_torch(x, y, stamp_size=64, step_size=16):
+    device = x.device
+    dtype = x.dtype
+    
+    num_iters = stamp_size // step_size
+    x_active = x.clone()
+    y_active = y.clone()
+    
+    act_stamps = []
+    wgt_stamps = []
+    
+    for t in range(num_iters):
+        H_t = x_active.shape[1]
+        x_trans = one_level_dwt_columns_torch(x_active)
+        y_trans = one_level_dwt_columns_torch(y_active)
+        
+        energy = torch.sum(x_trans**2, dim=0)
+        sorted_vals, sorted_idx = torch.sort(energy, descending=True)
+        selected_cols = sorted_idx[:step_size]
+        
+        act_stamps.append(x_trans[:, selected_cols].to(torch.bfloat16))
+        wgt_stamps.append(y_trans[:, selected_cols].to(torch.bfloat16))
+        
+        mask = torch.ones(H_t, dtype=torch.bool, device=device)
+        mask[selected_cols] = False
+        x_active = x_trans[:, mask]
+        y_active = y_trans[:, mask]
+        
+    act_quant, _, _, _ = quantize_mx_torch(
+        x_active, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+    )
+    wgt_quant, _, _, _ = quantize_mx_torch(
+        y_active, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+    )
+    
+    act_stamp_all = torch.cat(act_stamps, dim=1)
+    wgt_stamp_all = torch.cat(wgt_stamps, dim=1)
+    
+    out_stamp = torch.matmul(act_stamp_all, wgt_stamp_all.t())
+    out_rest = torch.matmul(act_quant, wgt_quant.t())
+    
+    return (out_stamp + out_rest).to(x.dtype)
 
 def svd_matmul_bf16_fp_torch(x, y, stamp_size=64):
     U, S_vals, Vh = torch.linalg.svd(x.float(), full_matrices=False)
@@ -210,6 +418,568 @@ def svd_matmul_bf16_fp_torch(x, y, stamp_size=64):
     out_q8 = torch.matmul(act_q8_stamp.to(torch.bfloat16), wgt_q8_stamp.to(torch.bfloat16).t())
     out_q4 = torch.matmul(act_q4_rest, wgt_q4_rest.t())
     return (out_q8 + out_q4).to(x.dtype)
+
+def hybrid_matmul_haar_grp128_l2_torch(act, wgt, Q_k, stamp_size=256):
+    device = act.device
+    dtype = act.dtype
+    
+    K = Q_k.shape[0]
+    H_w = wgt.shape[1]
+    H_x = act.shape[1]
+    
+    if K > H_x:
+        act_padded, _ = pad_columns_to_power_of_2(act, K)
+    else:
+        act_padded = act
+        
+    if K > H_w:
+        wgt_padded, _ = pad_columns_to_power_of_2(wgt, K)
+    else:
+        wgt_padded = wgt
+        
+    M = act_padded.shape[0]
+    Out = wgt_padded.shape[0]
+    num_groups = K // 128
+    stamp_per_group = stamp_size // num_groups
+    
+    act_trans = torch.matmul(act_padded, Q_k)       # (M, K)
+    wgt_trans = torch.matmul(wgt_padded, Q_k)       # (Out, K)
+    
+    act_trans_reshaped = act_trans.view(M, num_groups, 128)
+    energy_per_group = torch.sum(act_trans_reshaped ** 2, dim=0)  # (num_groups, 128)
+    
+    sorted_idx_per_group = torch.argsort(energy_per_group, dim=1, descending=True)  # (num_groups, 128)
+    top_idx_per_group = sorted_idx_per_group[:, :stamp_per_group]                   # (num_groups, stamp_per_group)
+    
+    offsets = (torch.arange(num_groups, device=device) * 128).unsqueeze(1)          # (num_groups, 1)
+    stamp_cols = (top_idx_per_group + offsets).view(-1)                             # (stamp_size,)
+    
+    mask = torch.ones(K, dtype=torch.bool, device=device)
+    mask[stamp_cols] = False
+    rem_cols = torch.where(mask)[0]                                                 # (K - stamp_size,)
+    
+    act_stamp = act_trans[:, stamp_cols].to(torch.bfloat16)
+    wgt_stamp = wgt_trans[:, stamp_cols].to(torch.bfloat16)
+    out_stamp = torch.matmul(act_stamp, wgt_stamp.t())
+    
+    act_rem = act_trans[:, rem_cols]
+    wgt_rem = wgt_trans[:, rem_cols]
+    
+    rem_dim = act_rem.shape[1]
+    pad_len = (32 - (rem_dim % 32)) % 32
+    if pad_len > 0:
+        act_rem_padded = torch.cat([act_rem, torch.zeros((act_rem.shape[0], pad_len), device=device, dtype=dtype)], dim=1)
+        wgt_rem_padded = torch.cat([wgt_rem, torch.zeros((wgt_rem.shape[0], pad_len), device=device, dtype=dtype)], dim=1)
+    else:
+        act_rem_padded = act_rem
+        wgt_rem_padded = wgt_rem
+        
+    act_rem_q_padded, _, _, _ = quantize_mx_torch(act_rem_padded, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    wgt_rem_q_padded, _, _, _ = quantize_mx_torch(wgt_rem_padded, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    
+    if pad_len > 0:
+        act_rem_q = act_rem_q_padded[:, :rem_dim]
+        wgt_rem_q = wgt_rem_q_padded[:, :rem_dim]
+    else:
+        act_rem_q = act_rem_q_padded
+        wgt_rem_q = wgt_rem_q_padded
+        
+    out_rem = torch.matmul(act_rem_q, wgt_rem_q.t())
+    
+    Y_recon = (out_stamp + out_rem).to(dtype)
+    return Y_recon
+
+def hybrid_matmul_haar_grp128_l2_trends_only_torch(act, wgt, Q_k, stamp_size=256):
+    device = act.device
+    dtype = act.dtype
+    
+    K = Q_k.shape[0]
+    H_w = wgt.shape[1]
+    H_x = act.shape[1]
+    
+    if K > H_x:
+        act_padded, _ = pad_columns_to_power_of_2(act, K)
+    else:
+        act_padded = act
+        
+    if K > H_w:
+        wgt_padded, _ = pad_columns_to_power_of_2(wgt, K)
+    else:
+        wgt_padded = wgt
+        
+    M = act_padded.shape[0]
+    Out = wgt_padded.shape[0]
+    num_groups = K // 128
+    stamp_per_group = stamp_size // num_groups
+    
+    act_trans = torch.matmul(act_padded, Q_k)       # (M, K)
+    wgt_trans = torch.matmul(wgt_padded, Q_k)       # (Out, K)
+    
+    act_trans_reshaped = act_trans.view(M, num_groups, 128)
+    
+    # Calculate energy ONLY on the first 32 channels (Level-2 trends) of each group
+    act_trends = act_trans_reshaped[:, :, :32]
+    energy_per_group = torch.sum(act_trends ** 2, dim=0)  # (num_groups, 32)
+    
+    # Sort ONLY within the 32 trend channels
+    sorted_idx_per_group = torch.argsort(energy_per_group, dim=1, descending=True)  # (num_groups, 32)
+    top_idx_per_group = sorted_idx_per_group[:, :stamp_per_group]                   # (num_groups, stamp_per_group)
+    
+    # Combine back into global stamp indices
+    offsets = (torch.arange(num_groups, device=device) * 128).unsqueeze(1)          # (num_groups, 1)
+    stamp_cols = (top_idx_per_group + offsets).view(-1)                             # (stamp_size,)
+    
+    mask = torch.ones(K, dtype=torch.bool, device=device)
+    mask[stamp_cols] = False
+    rem_cols = torch.where(mask)[0]                                                 # (K - stamp_size,)
+    
+    act_stamp = act_trans[:, stamp_cols].to(torch.bfloat16)
+    wgt_stamp = wgt_trans[:, stamp_cols].to(torch.bfloat16)
+    out_stamp = torch.matmul(act_stamp, wgt_stamp.t())
+    
+    act_rem = act_trans[:, rem_cols]
+    wgt_rem = wgt_trans[:, rem_cols]
+    
+    rem_dim = act_rem.shape[1]
+    pad_len = (32 - (rem_dim % 32)) % 32
+    if pad_len > 0:
+        act_rem_padded = torch.cat([act_rem, torch.zeros((act_rem.shape[0], pad_len), device=device, dtype=dtype)], dim=1)
+        wgt_rem_padded = torch.cat([wgt_rem, torch.zeros((wgt_rem.shape[0], pad_len), device=device, dtype=dtype)], dim=1)
+    else:
+        act_rem_padded = act_rem
+        wgt_rem_padded = wgt_rem
+        
+    act_rem_q_padded, _, _, _ = quantize_mx_torch(act_rem_padded, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    wgt_rem_q_padded, _, _, _ = quantize_mx_torch(wgt_rem_padded, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    
+    if pad_len > 0:
+        act_rem_q = act_rem_q_padded[:, :rem_dim]
+        wgt_rem_q = wgt_rem_q_padded[:, :rem_dim]
+    else:
+        act_rem_q = act_rem_q_padded
+        wgt_rem_q = wgt_rem_q_padded
+        
+    out_rem = torch.matmul(act_rem_q, wgt_rem_q.t())
+    
+    Y_recon = (out_stamp + out_rem).to(dtype)
+    return Y_recon
+
+def hybrid_matmul_haar_grp128_l2_first_k_torch(act, wgt, Q_k, stamp_size=256):
+    device = act.device
+    dtype = act.dtype
+    
+    K = Q_k.shape[0]
+    H_w = wgt.shape[1]
+    H_x = act.shape[1]
+    
+    if K > H_x:
+        act_padded, _ = pad_columns_to_power_of_2(act, K)
+    else:
+        act_padded = act
+        
+    if K > H_w:
+        wgt_padded, _ = pad_columns_to_power_of_2(wgt, K)
+    else:
+        wgt_padded = wgt
+        
+    M = act_padded.shape[0]
+    Out = wgt_padded.shape[0]
+    num_groups = K // 128
+    stamp_per_group = stamp_size // num_groups
+    
+    act_trans = torch.matmul(act_padded, Q_k)       # (M, K)
+    wgt_trans = torch.matmul(wgt_padded, Q_k)       # (Out, K)
+    
+    # Static Selection: pick the first `stamp_per_group` columns in each group of 128
+    group_indices = torch.arange(stamp_per_group, device=device)  # [0, 1, ..., stamp_per_group - 1]
+    offsets = (torch.arange(num_groups, device=device) * 128).unsqueeze(1)
+    stamp_cols = (group_indices + offsets).view(-1)                 # Static stamp columns indices
+    
+    mask = torch.ones(K, dtype=torch.bool, device=device)
+    mask[stamp_cols] = False
+    rem_cols = torch.where(mask)[0]
+    
+    act_stamp = act_trans[:, stamp_cols].to(torch.bfloat16)
+    wgt_stamp = wgt_trans[:, stamp_cols].to(torch.bfloat16)
+    out_stamp = torch.matmul(act_stamp, wgt_stamp.t())
+    
+    act_rem = act_trans[:, rem_cols]
+    wgt_rem = wgt_trans[:, rem_cols]
+    
+    rem_dim = act_rem.shape[1]
+    pad_len = (32 - (rem_dim % 32)) % 32
+    if pad_len > 0:
+        act_rem_padded = torch.cat([act_rem, torch.zeros((act_rem.shape[0], pad_len), device=device, dtype=dtype)], dim=1)
+        wgt_rem_padded = torch.cat([wgt_rem, torch.zeros((wgt_rem.shape[0], pad_len), device=device, dtype=dtype)], dim=1)
+    else:
+        act_rem_padded = act_rem
+        wgt_rem_padded = wgt_rem
+        
+    act_rem_q_padded, _, _, _ = quantize_mx_torch(act_rem_padded, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    wgt_rem_q_padded, _, _, _ = quantize_mx_torch(wgt_rem_padded, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    
+    if pad_len > 0:
+        act_rem_q = act_rem_q_padded[:, :rem_dim]
+        wgt_rem_q = wgt_rem_q_padded[:, :rem_dim]
+    else:
+        act_rem_q = act_rem_q_padded
+        wgt_rem_q = wgt_rem_q_padded
+        
+    out_rem = torch.matmul(act_rem_q, wgt_rem_q.t())
+    
+    Y_recon = (out_stamp + out_rem).to(dtype)
+    return Y_recon
+
+def hybrid_matmul_spatial_grp128_torch(act, wgt, stamp_size=256):
+    device = act.device
+    dtype = act.dtype
+    
+    K = act.shape[1]
+    assert K % 128 == 0
+    
+    M = act.shape[0]
+    Out = wgt.shape[0]
+    num_groups = K // 128
+    stamp_per_group = stamp_size // num_groups
+    
+    act_trans = act
+    wgt_trans = wgt
+    
+    act_trans_reshaped = act_trans.view(M, num_groups, 128)
+    energy_per_group = torch.sum(act_trans_reshaped ** 2, dim=0)  # (num_groups, 128)
+    
+    sorted_idx_per_group = torch.argsort(energy_per_group, dim=1, descending=True)  # (num_groups, 128)
+    top_idx_per_group = sorted_idx_per_group[:, :stamp_per_group]                   # (num_groups, stamp_per_group)
+    
+    offsets = (torch.arange(num_groups, device=device) * 128).unsqueeze(1)          # (num_groups, 1)
+    stamp_cols = (top_idx_per_group + offsets).view(-1)                             # (stamp_size,)
+    
+    mask = torch.ones(K, dtype=torch.bool, device=device)
+    mask[stamp_cols] = False
+    rem_cols = torch.where(mask)[0]                                                 # (K - stamp_size,)
+    
+    act_stamp = act_trans[:, stamp_cols].to(torch.bfloat16)
+    wgt_stamp = wgt_trans[:, stamp_cols].to(torch.bfloat16)
+    out_stamp = torch.matmul(act_stamp, wgt_stamp.t())
+    
+    act_rem = act_trans[:, rem_cols]
+    wgt_rem = wgt_trans[:, rem_cols]
+    
+    rem_dim = act_rem.shape[1]
+    pad_len = (32 - (rem_dim % 32)) % 32
+    if pad_len > 0:
+        act_rem_padded = torch.cat([act_rem, torch.zeros((act_rem.shape[0], pad_len), device=device, dtype=dtype)], dim=1)
+        wgt_rem_padded = torch.cat([wgt_rem, torch.zeros((wgt_rem.shape[0], pad_len), device=device, dtype=dtype)], dim=1)
+    else:
+        act_rem_padded = act_rem
+        wgt_rem_padded = wgt_rem
+        
+    act_rem_q_padded, _, _, _ = quantize_mx_torch(act_rem_padded, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    wgt_rem_q_padded, _, _, _ = quantize_mx_torch(wgt_rem_padded, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    
+    if pad_len > 0:
+        act_rem_q = act_rem_q_padded[:, :rem_dim]
+        wgt_rem_q = wgt_rem_q_padded[:, :rem_dim]
+    else:
+        act_rem_q = act_rem_q_padded
+        wgt_rem_q = wgt_rem_q_padded
+        
+    out_rem = torch.matmul(act_rem_q, wgt_rem_q.t())
+    
+    Y_recon = (out_stamp + out_rem).to(dtype)
+    return Y_recon
+
+def hybrid_matmul_spatial_static_grp128_torch(act, wgt, stamp_size=256):
+    device = act.device
+    dtype = act.dtype
+    
+    K = act.shape[1]
+    assert K % 128 == 0
+    
+    M = act.shape[0]
+    Out = wgt.shape[0]
+    num_groups = K // 128
+    stamp_per_group = stamp_size // num_groups
+    
+    # Sort by STATIC weight energy column-wise per group
+    wgt_reshaped = wgt.t().view(num_groups, 128, Out)
+    wgt_energy_per_group = torch.sum(wgt_reshaped ** 2, dim=2)  # (num_groups, 128)
+    
+    sorted_idx_per_group = torch.argsort(wgt_energy_per_group, dim=1, descending=True)  # (num_groups, 128)
+    top_idx_per_group = sorted_idx_per_group[:, :stamp_per_group]                       # (num_groups, stamp_per_group)
+    
+    offsets = (torch.arange(num_groups, device=device) * 128).unsqueeze(1)              # (num_groups, 1)
+    stamp_cols = (top_idx_per_group + offsets).view(-1)                                 # (stamp_size,)
+    
+    mask = torch.ones(K, dtype=torch.bool, device=device)
+    mask[stamp_cols] = False
+    rem_cols = torch.where(mask)[0]                                                     # (K - stamp_size,)
+    
+    act_stamp = act[:, stamp_cols].to(torch.bfloat16)
+    wgt_stamp = wgt[:, stamp_cols].to(torch.bfloat16)
+    out_stamp = torch.matmul(act_stamp, wgt_stamp.t())
+    
+    act_rem = act[:, rem_cols]
+    wgt_rem = wgt[:, rem_cols]
+    
+    rem_dim = act_rem.shape[1]
+    pad_len = (32 - (rem_dim % 32)) % 32
+    if pad_len > 0:
+        act_rem_padded = torch.cat([act_rem, torch.zeros((act_rem.shape[0], pad_len), device=device, dtype=dtype)], dim=1)
+        wgt_rem_padded = torch.cat([wgt_rem, torch.zeros((wgt_rem.shape[0], pad_len), device=device, dtype=dtype)], dim=1)
+    else:
+        act_rem_padded = act_rem
+        wgt_rem_padded = wgt_rem
+        
+    act_rem_q_padded, _, _, _ = quantize_mx_torch(act_rem_padded, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    wgt_rem_q_padded, _, _, _ = quantize_mx_torch(wgt_rem_padded, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    
+    if pad_len > 0:
+        act_rem_q = act_rem_q_padded[:, :rem_dim]
+        wgt_rem_q = wgt_rem_q_padded[:, :rem_dim]
+    else:
+        act_rem_q = act_rem_q_padded
+        wgt_rem_q = wgt_rem_q_padded
+        
+    out_rem = torch.matmul(act_rem_q, wgt_rem_q.t())
+    
+    Y_recon = (out_stamp + out_rem).to(dtype)
+    return Y_recon
+
+
+def hybrid_matmul_zero_masked_grouped_torch(act, wgt, group_size=32, token_dynamic=True):
+    device = act.device
+    dtype = act.dtype
+    
+    T, C = act.shape
+    O = wgt.shape[0]
+    
+    assert C % group_size == 0
+    num_groups = C // group_size
+    
+    act_blocks = act.view(T, num_groups, group_size)
+    
+    if token_dynamic:
+        outlier_idx = torch.argmax(torch.abs(act_blocks), dim=-1) # [T, num_groups]
+        group_offsets = torch.arange(num_groups, device=device) * group_size
+        global_idx = outlier_idx + group_offsets.unsqueeze(0) # [T, num_groups]
+        
+        X_heavy = torch.gather(act, dim=-1, index=global_idx) # [T, num_groups]
+        
+        global_idx_expanded = global_idx.unsqueeze(1).expand(-1, O, -1) # [T, O, num_groups]
+        W_heavy = torch.gather(wgt.unsqueeze(0).expand(T, -1, -1), dim=-1, index=global_idx_expanded) # [T, O, num_groups]
+        
+        zeros = torch.zeros_like(X_heavy)
+        act_light_blocks = torch.scatter(act_blocks.clone(), dim=-1, index=outlier_idx.unsqueeze(-1), src=zeros.unsqueeze(-1))
+        act_light = act_light_blocks.view(T, C)
+        
+        Y_heavy = torch.einsum('tg,tog->to', X_heavy.to(torch.bfloat16), W_heavy.to(torch.bfloat16))
+    else:
+        scores = torch.sum(act_blocks ** 2, dim=0) # [num_groups, group_size]
+        outlier_idx = torch.argmax(scores, dim=-1) # [num_groups]
+        group_offsets = torch.arange(num_groups, device=device) * group_size
+        global_idx = outlier_idx + group_offsets # [num_groups]
+        
+        X_heavy = act[:, global_idx] # [T, num_groups]
+        W_heavy = wgt[:, global_idx] # [O, num_groups]
+        
+        act_light = act.clone()
+        act_light[:, global_idx] = 0.0
+        
+        Y_heavy = torch.matmul(X_heavy.to(torch.bfloat16), W_heavy.to(torch.bfloat16).t())
+        
+    act_light_q, _, _, _ = quantize_mx_torch(act_light, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    wgt_q, _, _, _ = quantize_mx_torch(wgt, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    
+    Y_light = torch.matmul(act_light_q, wgt_q.t())
+    
+    Y_recon = (Y_heavy + Y_light).to(dtype)
+    return Y_recon
+
+
+def hybrid_matmul_zero_masked_wht_grouped_torch(act, wgt, group_size=32, token_dynamic=True):
+    device = act.device
+    dtype = act.dtype
+    
+    T, C = act.shape
+    O = wgt.shape[0]
+    
+    assert C % group_size == 0
+    num_groups = C // group_size
+    
+    H, _ = sequency_ordered_hadamard(group_size, device=device, dtype=dtype)
+    
+    act_blocks = act.view(T, num_groups, group_size)
+    
+    if token_dynamic:
+        outlier_idx = torch.argmax(torch.abs(act_blocks), dim=-1) # [T, num_groups]
+        group_offsets = torch.arange(num_groups, device=device) * group_size
+        global_idx = outlier_idx + group_offsets.unsqueeze(0) # [T, num_groups]
+        
+        X_heavy = torch.gather(act, dim=-1, index=global_idx) # [T, num_groups]
+        
+        global_idx_expanded = global_idx.unsqueeze(1).expand(-1, O, -1) # [T, O, num_groups]
+        W_heavy = torch.gather(wgt.unsqueeze(0).expand(T, -1, -1), dim=-1, index=global_idx_expanded) # [T, O, num_groups]
+        
+        zeros = torch.zeros_like(X_heavy)
+        act_light_blocks = torch.scatter(act_blocks.clone(), dim=-1, index=outlier_idx.unsqueeze(-1), src=zeros.unsqueeze(-1))
+        
+        Y_heavy = torch.einsum('tg,tog->to', X_heavy.to(torch.bfloat16), W_heavy.to(torch.bfloat16))
+    else:
+        scores = torch.sum(act_blocks ** 2, dim=0) # [num_groups, group_size]
+        outlier_idx = torch.argmax(scores, dim=-1) # [num_groups]
+        group_offsets = torch.arange(num_groups, device=device) * group_size
+        global_idx = outlier_idx + group_offsets # [num_groups]
+        
+        X_heavy = act[:, global_idx] # [T, num_groups]
+        W_heavy = wgt[:, global_idx] # [O, num_groups]
+        
+        act_light = act.clone()
+        act_light[:, global_idx] = 0.0
+        act_light_blocks = act_light.view(T, num_groups, group_size)
+        
+        Y_heavy = torch.matmul(X_heavy.to(torch.bfloat16), W_heavy.to(torch.bfloat16).t())
+        
+    act_light_trans_blocks = torch.matmul(act_light_blocks, H.t())
+    act_light_trans = act_light_trans_blocks.view(T, C)
+    
+    wgt_blocks = wgt.view(O, num_groups, group_size)
+    wgt_trans_blocks = torch.matmul(wgt_blocks, H.t())
+    wgt_trans = wgt_trans_blocks.view(O, C)
+    
+    act_light_q, _, _, _ = quantize_mx_torch(act_light_trans, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    wgt_q, _, _, _ = quantize_mx_torch(wgt_trans, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    
+    Y_light = torch.matmul(act_light_q, wgt_q.t())
+    
+    Y_recon = (Y_heavy + Y_light).to(dtype)
+    return Y_recon
+
+
+def hybrid_matmul_zero_masked_butterfly_grouped_torch(act, wgt, wgt_transformed, group_size=32, token_dynamic=True):
+    device = act.device
+    dtype = act.dtype
+    
+    T, C = act.shape
+    O = wgt.shape[0]
+    
+    assert C % group_size == 0
+    num_groups = C // group_size
+    
+    act_blocks = act.view(T, num_groups, group_size)
+    
+    if token_dynamic:
+        outlier_idx = torch.argmax(torch.abs(act_blocks), dim=-1) # [T, num_groups]
+        group_offsets = torch.arange(num_groups, device=device) * group_size
+        global_idx = outlier_idx + group_offsets.unsqueeze(0) # [T, num_groups]
+        
+        X_heavy = torch.gather(act, dim=-1, index=global_idx) # [T, num_groups]
+        
+        global_idx_expanded = global_idx.unsqueeze(1).expand(-1, O, -1) # [T, O, num_groups]
+        W_heavy = torch.gather(wgt.unsqueeze(0).expand(T, -1, -1), dim=-1, index=global_idx_expanded) # [T, O, num_groups]
+        
+        zeros = torch.zeros_like(X_heavy)
+        act_light_blocks = torch.scatter(act_blocks.clone(), dim=-1, index=outlier_idx.unsqueeze(-1), src=zeros.unsqueeze(-1))
+        
+        Y_heavy = torch.einsum('tg,tog->to', X_heavy.to(torch.bfloat16), W_heavy.to(torch.bfloat16))
+    else:
+        scores = torch.sum(act_blocks ** 2, dim=0) # [num_groups, group_size]
+        outlier_idx = torch.argmax(scores, dim=-1) # [num_groups]
+        group_offsets = torch.arange(num_groups, device=device) * group_size
+        global_idx = outlier_idx + group_offsets # [num_groups]
+        
+        X_heavy = act[:, global_idx] # [T, num_groups]
+        W_heavy = wgt[:, global_idx] # [O, num_groups]
+        
+        act_light = act.clone()
+        act_light[:, global_idx] = 0.0
+        act_light_blocks = act_light.view(T, num_groups, group_size)
+        
+        Y_heavy = torch.matmul(X_heavy.to(torch.bfloat16), W_heavy.to(torch.bfloat16).t())
+        
+    act_light_transformed_blocks = apply_2pass_butterfly_torch(act_light_blocks, dim=-1)
+    act_light_transformed = act_light_transformed_blocks.view(T, C)
+    
+    act_light_q, _, _, _ = quantize_mx_torch(act_light_transformed, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    wgt_q, _, _, _ = quantize_mx_torch(wgt_transformed, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    
+    Y_light = torch.matmul(act_light_q, wgt_q.t())
+    
+    Y_recon = (Y_heavy + Y_light).to(dtype)
+    return Y_recon
+
+
+def hybrid_matmul_spatial_grouped_torch(act, wgt, group_size, stamp_per_group, metric="energy"):
+    device = act.device
+    dtype = act.dtype
+    
+    K = act.shape[1]
+    assert K % group_size == 0
+    
+    M = act.shape[0]
+    Out = wgt.shape[0]
+    num_groups = K // group_size
+    stamp_size = num_groups * stamp_per_group
+    
+    act_trans = act
+    wgt_trans = wgt
+    
+    act_trans_reshaped = act_trans.view(M, num_groups, group_size)
+    
+    if metric == "energy":
+        metric_score = torch.sum(act_trans_reshaped ** 2, dim=0)  # (num_groups, group_size)
+    elif metric == "abssum":
+        metric_score = torch.sum(torch.abs(act_trans_reshaped), dim=0)
+    elif metric == "pmr":
+        peak = torch.max(torch.abs(act_trans_reshaped), dim=0).values
+        median = torch.median(torch.abs(act_trans_reshaped), dim=0).values
+        metric_score = peak / (median + 1e-5)
+    elif metric == "mad":
+        mean = torch.mean(act_trans_reshaped, dim=0)
+        metric_score = torch.mean(torch.abs(act_trans_reshaped - mean), dim=0)
+    else:
+        raise ValueError(f"Unknown metric: {metric}")
+        
+    sorted_idx_per_group = torch.argsort(metric_score, dim=1, descending=True)  # (num_groups, group_size)
+    top_idx_per_group = sorted_idx_per_group[:, :stamp_per_group]                   # (num_groups, stamp_per_group)
+    
+    offsets = (torch.arange(num_groups, device=device) * group_size).unsqueeze(1)    # (num_groups, 1)
+    stamp_cols = (top_idx_per_group + offsets).view(-1)                             # (stamp_size,)
+    
+    mask = torch.ones(K, dtype=torch.bool, device=device)
+    mask[stamp_cols] = False
+    rem_cols = torch.where(mask)[0]
+    
+    act_stamp = act_trans[:, stamp_cols].to(torch.bfloat16)
+    wgt_stamp = wgt_trans[:, stamp_cols].to(torch.bfloat16)
+    out_stamp = torch.matmul(act_stamp, wgt_stamp.t())
+    
+    act_rem = act_trans[:, rem_cols]
+    wgt_rem = wgt_trans[:, rem_cols]
+    
+    rem_dim = act_rem.shape[1]
+    pad_len = (32 - (rem_dim % 32)) % 32
+    if pad_len > 0:
+        act_rem_padded = torch.cat([act_rem, torch.zeros((act_rem.shape[0], pad_len), device=device, dtype=dtype)], dim=1)
+        wgt_rem_padded = torch.cat([wgt_rem, torch.zeros((wgt_rem.shape[0], pad_len), device=device, dtype=dtype)], dim=1)
+    else:
+        act_rem_padded = act_rem
+        wgt_rem_padded = wgt_rem
+        
+    act_rem_q_padded, _, _, _ = quantize_mx_torch(act_rem_padded, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    wgt_rem_q_padded, _, _, _ = quantize_mx_torch(wgt_rem_padded, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    
+    if pad_len > 0:
+        act_rem_q = act_rem_q_padded[:, :rem_dim]
+        wgt_rem_q = wgt_rem_q_padded[:, :rem_dim]
+    else:
+        act_rem_q = act_rem_q_padded
+        wgt_rem_q = wgt_rem_q_padded
+        
+    out_rem = torch.matmul(act_rem_q, wgt_rem_q.t())
+    
+    Y_recon = (out_stamp + out_rem).to(dtype)
+    return Y_recon
 
 def dwt_2d_torch(x):
     assert x.shape[0] % 2 == 0
@@ -907,15 +1677,54 @@ def quantize_mx_torch(x, block_size, elem_format="e2m1", scale_format="e4m3", pr
         else:
             effective_rounding = rounding
             
-        scaling_factor = quantize_scale_simulate(raw_scale, format=scale_format, prevent_zero=prevent_zero, rounding=effective_rounding)
+        if effective_rounding == "squant":
+            effective_scale_rounding = "ceil" if scale_format == "e8m0" else "round"
+        else:
+            effective_scale_rounding = effective_rounding
+            
+        scaling_factor = quantize_scale_simulate(raw_scale, format=scale_format, prevent_zero=prevent_zero, rounding=effective_scale_rounding)
         
         # Safe division to mimic JAX behavior without NaN propagation
         safe_scale = torch.where(scaling_factor != 0.0, scaling_factor, torch.ones_like(scaling_factor))
         scaled = x_reshaped / safe_scale
         scaled = torch.where(scaling_factor != 0.0, scaled, torch.zeros_like(scaled))
         
-        quant = snap_fp4(scaled)
-        dequant = quant * scaling_factor
+        if effective_rounding == "squant":
+            fp4_vals = get_signed_fp4_values(elem_format, device=x.device)
+            idx = torch.searchsorted(fp4_vals, scaled)
+            idx = torch.clamp(idx, min=1, max=len(fp4_vals) - 1)
+            left_val = fp4_vals[idx - 1]
+            right_val = fp4_vals[idx]
+            dist_left = torch.abs(scaled - left_val)
+            dist_right = torch.abs(scaled - right_val)
+            mask = dist_left < dist_right
+            q_nearest = torch.where(mask, left_val, right_val)
+            q_alt = torch.where(mask, right_val, left_val)
+            
+            delta = scaling_factor * (q_alt - q_nearest)
+            E = torch.sum(scaling_factor * (scaled - q_nearest), dim=-1, keepdim=True)
+            
+            delta_flat = delta.reshape(delta.shape[0], -1)
+            sort_idx = torch.argsort(torch.abs(delta_flat), dim=-1)
+            delta_sorted = torch.gather(delta_flat, dim=-1, index=sort_idx)
+            delta_cumsum = torch.cumsum(delta_sorted, dim=-1)
+            
+            E_flat = E.reshape(E.shape[0], 1)
+            E_cum = E_flat - delta_cumsum
+            E_zero = E_flat
+            E_options = torch.cat([E_zero, E_cum], dim=-1)
+            
+            r_star = torch.argmin(torch.abs(E_options), dim=-1, keepdim=True)
+            
+            inv_sort_idx = torch.argsort(sort_idx, dim=-1)
+            flip_mask_flat = inv_sort_idx < r_star
+            flip_mask = flip_mask_flat.reshape(scaled.shape)
+            
+            quant = torch.where(flip_mask, q_alt, q_nearest)
+            dequant = quant * scaling_factor
+        else:
+            quant = snap_fp4(scaled)
+            dequant = quant * scaling_factor
         use_4 = torch.zeros_like(scaling_factor, dtype=torch.bool)
     else:
         max_abs = torch.max(torch.abs(x_reshaped), dim=-1, keepdim=True).values
@@ -1004,6 +1813,334 @@ class TorchMXLinear(nn.Linear):
         q_input, _, _, _ = quantize_mx_torch(x_rot, self.block_size, elem_format=self.act_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
         
         return F.linear(q_input, q_weight, self.bias)
+
+class TorchSeqMeanSubLinear(nn.Linear):
+    def __init__(self, in_features, out_features, bias=True, group_size=32, block_size=32, prevent_zero=True, four_over_six=False,
+                 elem_format="e2m1", scale_format="e4m3", use_hierarchical=False, hadamard_size=0, hadamard_seed=42,
+                 clip_percentile=None, rounding=None, custom_rotation=None):
+        super().__init__(in_features, out_features, bias)
+        self.group_size = group_size
+        self.block_size = block_size
+        self.prevent_zero = prevent_zero
+        self.four_over_six = four_over_six
+        self.use_hierarchical = use_hierarchical
+        self.elem_format = elem_format
+        self.scale_format = scale_format
+        self.hadamard_size = hadamard_size
+        self.hadamard_seed = hadamard_seed
+        self.clip_percentile = clip_percentile
+        self.rounding = rounding
+        self.custom_rotation = custom_rotation
+
+    def forward(self, input):
+        init_shape = input.shape
+        x_2d = input.reshape(-1, init_shape[-1])
+        w = self.weight
+        
+        # 1. Pad sequence dimension to multiple of group_size
+        S = x_2d.shape[0]
+        G = self.group_size
+        if S % G != 0:
+            pad_len = G - (S % G)
+            last_row = x_2d[-1:, :]
+            padding = last_row.repeat(pad_len, 1)
+            x_padded = torch.cat((x_2d, padding), dim=0)
+        else:
+            x_padded = x_2d
+            
+        S_pad = x_padded.shape[0]
+        num_groups = S_pad // G
+        
+        # 2. Reshape to [num_groups, G, H] to compute mean per group
+        H = x_padded.shape[1]
+        x_reshaped = x_padded.view(num_groups, G, H)
+        mean_val = x_reshaped.mean(dim=1, keepdim=True) # [num_groups, 1, H]
+        
+        # 3. Center activations
+        x_centered = x_reshaped - mean_val # [num_groups, G, H]
+        x_centered_2d = x_centered.view(S_pad, H)
+        
+        # 4. Quantize centered activations and weights to MXFP4
+        q_weight, _, _, _ = quantize_mx_torch(w, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+        q_act_centered, _, _, _ = quantize_mx_torch(x_centered_2d, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+        
+        # 5. Centered matmul
+        out_centered_2d = F.linear(q_act_centered, q_weight, bias=None) # [S_pad, O]
+        
+        # 6. High-precision correction: mean_val * w^T
+        w_bf16 = w.to(torch.bfloat16)
+        correction = torch.matmul(mean_val.to(torch.bfloat16), w_bf16.t()) # [num_groups, 1, O]
+        
+        # 7. Add correction
+        out_centered_reshaped = out_centered_2d.view(num_groups, G, -1)
+        out_recon_reshaped = out_centered_reshaped + correction
+        out_recon_2d = out_recon_reshaped.view(S_pad, -1)
+        
+        # 8. Unpad and restore shape
+        if S % G != 0:
+            out_final_2d = out_recon_2d[:S, :]
+        else:
+            out_final_2d = out_recon_2d
+            
+        out_3d = out_final_2d.reshape(init_shape[:-1] + (self.out_features,))
+        if self.bias is not None:
+            out_3d = out_3d + self.bias
+        return out_3d
+
+class TorchSVDOutlierLinear(nn.Linear):
+    def __init__(self, in_features, out_features, bias=True, k=1, block_size=32, prevent_zero=True, four_over_six=False,
+                 elem_format="e2m1", scale_format="e4m3", use_hierarchical=False, hadamard_size=0, hadamard_seed=42,
+                 clip_percentile=None, rounding=None, custom_rotation=None):
+        super().__init__(in_features, out_features, bias)
+        self.k = k
+        self.block_size = block_size
+        self.prevent_zero = prevent_zero
+        self.four_over_six = four_over_six
+        self.use_hierarchical = use_hierarchical
+        self.elem_format = elem_format
+        self.scale_format = scale_format
+        self.hadamard_size = hadamard_size
+        self.hadamard_seed = hadamard_seed
+        self.clip_percentile = clip_percentile
+        self.rounding = rounding
+        self.custom_rotation = custom_rotation
+        
+        self.register_buffer("V_k", None)     # Outlier subspace [H, K]
+        self.register_buffer("W_proj", None)  # Pre-projected weights [O, K]
+        self.is_calibrated = False
+
+    def forward(self, input):
+        device = input.device
+        dtype = input.dtype
+        init_shape = input.shape
+        x_2d = input.reshape(-1, init_shape[-1])
+        w = self.weight
+        
+        # 1. Calibration Pass (first forward step)
+        if not self.is_calibrated:
+            with torch.no_grad():
+                x_f32 = x_2d.float()
+                U, S_vals, Vt = torch.linalg.svd(x_f32, full_matrices=False)
+                
+                # self.V_k: [H, K]
+                self.V_k = Vt[:self.k, :].t().to(dtype)
+                
+                # self.W_proj = W * V_k  -> [O, K]
+                self.W_proj = torch.matmul(w, self.V_k)
+                
+            self.is_calibrated = True
+            
+        # 2. Split Matmul Execution
+        # projections = X * V_k  -> [S, K]
+        projections = torch.matmul(x_2d, self.V_k)
+        
+        # Y_heavy = projections * W_proj^T  -> [S, O]
+        y_heavy_2d = torch.matmul(projections, self.W_proj.t())
+        
+        # X_heavy = projections * V_k^T  -> [S, H]
+        x_heavy_2d = torch.matmul(projections, self.V_k.t())
+        
+        # X_light = X - X_heavy  -> [S, H]
+        x_light_2d = x_2d - x_heavy_2d
+        
+        # Quantize X_light and W to MXFP4
+        q_weight, _, _, _ = quantize_mx_torch(w, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+        q_act_light, _, _, _ = quantize_mx_torch(x_light_2d, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+        
+        # Y_light = X_light_quant * W_quant^T  -> [S, O]
+        y_light_2d = F.linear(q_act_light, q_weight, bias=None)
+        
+        # Sum outputs
+        out_2d = y_light_2d + y_heavy_2d
+        
+        out_3d = out_2d.reshape(init_shape[:-1] + (self.out_features,))
+        if self.bias is not None:
+            out_3d = out_3d + self.bias
+            
+        return out_3d
+
+class TorchPermutedMLP(nn.Module):
+    def __init__(self, original_mlp, rms_gamma, block_size=32, prevent_zero=True, four_over_six=False,
+                 elem_format="e2m1", scale_format="e4m3", use_hierarchical=False, clip_percentile=None, rounding=None,
+                 stamp_size=0, stamp_size_dff=0, search_box_size=0, search_box_size_dff=0):
+        super().__init__()
+        self.block_size = block_size
+        self.prevent_zero = prevent_zero
+        self.four_over_six = four_over_six
+        self.use_hierarchical = use_hierarchical
+        self.elem_format = elem_format
+        self.scale_format = scale_format
+        self.clip_percentile = clip_percentile
+        self.rounding = rounding
+        self.stamp_size = stamp_size
+        self.stamp_size_dff = stamp_size_dff
+        self.search_box_size = search_box_size
+        self.search_box_size_dff = search_box_size_dff
+        
+        # Keep references to original layers
+        w_gate = original_mlp.gate_proj.weight.data # [D_ff, C]
+        w_up = original_mlp.up_proj.weight.data     # [D_ff, C]
+        w_down = original_mlp.down_proj.weight.data # [O, D_ff]
+        
+        device = w_gate.device
+        dtype = w_gate.dtype
+        
+        # 1. Sort contracting dimension C based on rms_gamma
+        gamma_abs = torch.abs(rms_gamma.data)
+        C_permutation = torch.argsort(gamma_abs, descending=True)
+        self.register_buffer("C_permutation", C_permutation)
+        
+        # Permute columns (axis 1) of gate/up weights
+        w_gate_perm_C = w_gate[:, C_permutation]
+        w_up_perm_C = w_up[:, C_permutation]
+        
+        # 2. Sort intermediate dimension D_ff
+        # Joint score: L2 norm of rows (dim 1) of gate and up weights
+        gate_row_norms = torch.linalg.norm(w_gate_perm_C, dim=1) # [D_ff]
+        up_row_norms = torch.linalg.norm(w_up_perm_C, dim=1)     # [D_ff]
+        
+        dff_scores = gate_row_norms * up_row_norms
+        Dff_permutation = torch.argsort(dff_scores, descending=True)
+        self.register_buffer("Dff_permutation", Dff_permutation)
+        
+        # Apply Dff permutation:
+        # Permute output dimension of gate/up (axis 0)
+        w_gate_final = w_gate_perm_C[Dff_permutation, :]
+        w_up_final = w_up_perm_C[Dff_permutation, :]
+        
+        # Permute input dimension of down (axis 1)
+        w_down_final = w_down[:, Dff_permutation]
+        
+        self.w_gate_perm = nn.Parameter(w_gate_final, requires_grad=False)
+        self.w_up_perm = nn.Parameter(w_up_final, requires_grad=False)
+        self.w_down_perm = nn.Parameter(w_down_final, requires_grad=False)
+        
+        self.act_fn = original_mlp.act_fn
+
+    def forward(self, x):
+        init_shape = x.shape
+        x_2d = x.reshape(-1, init_shape[-1])
+        device = x.device
+        dtype = x.dtype
+        
+        # 1. Permute incoming activations
+        x_perm = x_2d[:, self.C_permutation]
+        
+        # 2. Gate & Up Projections
+        if self.stamp_size > 0:
+            if self.search_box_size > 0:
+                # Dynamic selection strictly within the search box (e.g. first 256 channels)
+                x_box = x_perm[:, :self.search_box_size]
+                box_energy = torch.sum(x_box ** 2, dim=0)
+                top_box_idx = torch.argsort(box_energy, descending=True)[:self.stamp_size]
+                stamp_cols = top_box_idx
+            else:
+                # Static split stamp
+                stamp_cols = torch.arange(self.stamp_size, device=device)
+                
+            mask = torch.ones(x_perm.shape[1], dtype=torch.bool, device=device)
+            mask[stamp_cols] = False
+            rem_cols = torch.where(mask)[0]
+            
+            x_heavy = x_perm[:, stamp_cols]
+            w_gate_heavy = self.w_gate_perm[:, stamp_cols]
+            w_up_heavy = self.w_up_perm[:, stamp_cols]
+            
+            h_gate_heavy = F.linear(x_heavy, w_gate_heavy, bias=None)
+            h_up_heavy = F.linear(x_heavy, w_up_heavy, bias=None)
+            
+            x_light = x_perm[:, rem_cols]
+            w_gate_light = self.w_gate_perm[:, rem_cols]
+            w_up_light = self.w_up_perm[:, rem_cols]
+            
+            # Pad light path to multiple of 32 for MXFP4
+            rem_dim = x_light.shape[1]
+            pad_len = (32 - (rem_dim % 32)) % 32
+            if pad_len > 0:
+                x_light_padded = torch.cat([x_light, torch.zeros((x_light.shape[0], pad_len), device=device, dtype=dtype)], dim=1)
+                w_gate_light_padded = torch.cat([w_gate_light, torch.zeros((w_gate_light.shape[0], pad_len), device=device, dtype=dtype)], dim=1)
+                w_up_light_padded = torch.cat([w_up_light, torch.zeros((w_up_light.shape[0], pad_len), device=device, dtype=dtype)], dim=1)
+            else:
+                x_light_padded = x_light
+                w_gate_light_padded = w_gate_light
+                w_up_light_padded = w_up_light
+                
+            q_x_light, _, _, _ = quantize_mx_torch(x_light_padded, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+            q_w_gate_light, _, _, _ = quantize_mx_torch(w_gate_light_padded, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+            q_w_up_light, _, _, _ = quantize_mx_torch(w_up_light_padded, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+            
+            if pad_len > 0:
+                q_x_light = q_x_light[:, :rem_dim]
+                q_w_gate_light = q_w_gate_light[:, :rem_dim]
+                q_w_up_light = q_w_up_light[:, :rem_dim]
+                
+            h_gate_light = F.linear(q_x_light, q_w_gate_light, bias=None)
+            h_up_light = F.linear(q_x_light, q_w_up_light, bias=None)
+            
+            h_gate = h_gate_heavy + h_gate_light
+            h_up = h_up_heavy + h_up_light
+        else:
+            q_x, _, _, _ = quantize_mx_torch(x_perm, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+            q_w_gate, _, _, _ = quantize_mx_torch(self.w_gate_perm, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+            q_w_up, _, _, _ = quantize_mx_torch(self.w_up_perm, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+            
+            h_gate = F.linear(q_x, q_w_gate, bias=None)
+            h_up = F.linear(q_x, q_w_up, bias=None)
+            
+        # 3. SwiGLU Element-wise Activation
+        h_inter = self.act_fn(h_gate) * h_up
+        
+        # 4. Down Projection
+        if self.stamp_size_dff > 0:
+            if self.search_box_size_dff > 0:
+                # Dynamic selection strictly within the intermediate search box (e.g. first 256 channels)
+                h_box = h_inter[:, :self.search_box_size_dff]
+                box_energy_dff = torch.sum(h_box ** 2, dim=0)
+                top_box_idx_dff = torch.argsort(box_energy_dff, descending=True)[:self.stamp_size_dff]
+                stamp_cols_dff = top_box_idx_dff
+            else:
+                # Static split stamp
+                stamp_cols_dff = torch.arange(self.stamp_size_dff, device=device)
+                
+            mask_dff = torch.ones(h_inter.shape[1], dtype=torch.bool, device=device)
+            mask_dff[stamp_cols_dff] = False
+            rem_cols_dff = torch.where(mask_dff)[0]
+            
+            h_heavy_dff = h_inter[:, stamp_cols_dff]
+            w_down_heavy = self.w_down_perm[:, stamp_cols_dff]
+            
+            y_heavy = F.linear(h_heavy_dff, w_down_heavy, bias=None)
+            
+            h_light_dff = h_inter[:, rem_cols_dff]
+            w_down_light = self.w_down_perm[:, rem_cols_dff]
+            
+            # Pad light path to multiple of 32 for MXFP4
+            rem_dim_dff = h_light_dff.shape[1]
+            pad_len_dff = (32 - (rem_dim_dff % 32)) % 32
+            if pad_len_dff > 0:
+                h_light_dff_padded = torch.cat([h_light_dff, torch.zeros((h_light_dff.shape[0], pad_len_dff), device=device, dtype=dtype)], dim=1)
+                w_down_light_padded = torch.cat([w_down_light, torch.zeros((w_down_light.shape[0], pad_len_dff), device=device, dtype=dtype)], dim=1)
+            else:
+                h_light_dff_padded = h_light_dff
+                w_down_light_padded = w_down_light
+                
+            q_h_light_dff, _, _, _ = quantize_mx_torch(h_light_dff_padded, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+            q_w_down_light, _, _, _ = quantize_mx_torch(w_down_light_padded, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+            
+            if pad_len_dff > 0:
+                q_h_light_dff = q_h_light_dff[:, :rem_dim_dff]
+                q_w_down_light = q_w_down_light[:, :rem_dim_dff]
+                
+            y_light = F.linear(q_h_light_dff, q_w_down_light, bias=None)
+            
+            y = y_heavy + y_light
+        else:
+            q_h_inter, _, _, _ = quantize_mx_torch(h_inter, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+            q_w_down, _, _, _ = quantize_mx_torch(self.w_down_perm, self.block_size, elem_format=self.elem_format, scale_format=self.scale_format, prevent_zero=self.prevent_zero, four_over_six=self.four_over_six, use_hierarchical=self.use_hierarchical, clip_percentile=self.clip_percentile, rounding=self.rounding)
+            
+            y = F.linear(q_h_inter, q_w_down, bias=None)
+            
+        return y.reshape(init_shape[:-1] + (y.shape[-1],))
 
 class TorchStampLinear(nn.Linear):
     def __init__(self, in_features, out_features, bias=True, stamp_size=64):
@@ -1144,10 +2281,43 @@ class TorchTransformSeqLinear(nn.Linear):
         return out_3d
 
 class TorchTransformFeatLinear(nn.Linear):
-    def __init__(self, in_features, out_features, bias=True, stamp_size=64, transform_name="dct"):
+    def __init__(self, in_features, out_features, bias=True, stamp_size=64, transform_name="dct", pattern="contiguous"):
         super().__init__(in_features, out_features, bias)
         self.stamp_size = stamp_size
         self.transform_name = transform_name
+        self.pattern = pattern
+        
+        H = in_features
+        is_pow2 = (H & (H - 1) == 0) and H > 0
+        
+        if transform_name.startswith("spatial_g"):
+            parts = transform_name.split("_")
+            group_size_str = parts[1][1:]
+            if group_size_str == "global" or group_size_str == "0":
+                self.target_pow_2 = H
+            else:
+                group_size = int(group_size_str)
+                self.target_pow_2 = ((H + group_size - 1) // group_size) * group_size
+        elif transform_name.startswith("blockmax_zero"):
+            parts = transform_name.split("_")
+            group_size = 32
+            for part in parts:
+                if part.startswith("g") and part[1:].isdigit():
+                    group_size = int(part[1:])
+                    break
+            self.target_pow_2 = ((H + group_size - 1) // group_size) * group_size
+        elif transform_name in ["haar_grp128_l2", "haar_grp128_l2_trends", "haar_grp128_l2_packet", "haar_grp128_l2_packet_first_k", "spatial_grp128", "spatial_static_grp128"]:
+            self.target_pow_2 = ((H + 127) // 128) * 128
+        elif (transform_name in ["haar", "wht"]) and not is_pow2:
+            self.target_pow_2 = 1 << H.bit_length()
+        else:
+            self.target_pow_2 = H
+            
+        self.register_buffer("D", None)
+        self.register_buffer("wgt_trans_q8", None)
+        self.register_buffer("wgt_trans_q4", None)
+        self.register_buffer("stamp_indices", None)
+        self.is_calibrated = False
         
     def forward(self, input):
         init_shape = input.shape
@@ -1155,9 +2325,286 @@ class TorchTransformFeatLinear(nn.Linear):
         
         if self.transform_name == "svd":
             out_2d = svd_matmul_bf16_fp_torch(x_2d, self.weight, self.stamp_size)
-        else:
-            out_2d = transform_feat_matmul_bf16_fp_torch(x_2d, self.weight, self.stamp_size, self.transform_name)
+            out_shape = init_shape[:-1] + (self.out_features,)
+            out_3d = out_2d.reshape(out_shape)
+            if self.bias is not None:
+                out_3d = out_3d + self.bias
+            return out_3d
             
+        if self.transform_name == "ioet":
+            out_2d = transform_iterative_matmul_bf16_fp_torch(x_2d, self.weight, self.stamp_size, step_size=16)
+            out_shape = init_shape[:-1] + (self.out_features,)
+            out_3d = out_2d.reshape(out_shape)
+            if self.bias is not None:
+                out_3d = out_3d + self.bias
+            return out_3d
+            
+        if self.transform_name == "haar_grp128_l2":
+            device = x_2d.device
+            dtype = x_2d.dtype
+            if self.D is None:
+                self.D = get_ortho_matrix(self.target_pow_2, self.transform_name, device=device, dtype=dtype)
+            out_2d = hybrid_matmul_haar_grp128_l2_torch(x_2d, self.weight, self.D, self.stamp_size)
+            out_shape = init_shape[:-1] + (self.out_features,)
+            out_3d = out_2d.reshape(out_shape)
+            if self.bias is not None:
+                out_3d = out_3d + self.bias
+            return out_3d
+            
+        if self.transform_name == "haar_grp128_l2_trends":
+            device = x_2d.device
+            dtype = x_2d.dtype
+            if self.D is None:
+                self.D = get_ortho_matrix(self.target_pow_2, "haar_grp128_l2", device=device, dtype=dtype)
+            out_2d = hybrid_matmul_haar_grp128_l2_trends_only_torch(x_2d, self.weight, self.D, self.stamp_size)
+            out_shape = init_shape[:-1] + (self.out_features,)
+            out_3d = out_2d.reshape(out_shape)
+            if self.bias is not None:
+                out_3d = out_3d + self.bias
+            return out_3d
+            
+        if self.transform_name == "haar_grp128_l2_packet":
+            device = x_2d.device
+            dtype = x_2d.dtype
+            if self.D is None:
+                self.D = get_ortho_matrix(self.target_pow_2, self.transform_name, device=device, dtype=dtype)
+            out_2d = hybrid_matmul_haar_grp128_l2_torch(x_2d, self.weight, self.D, self.stamp_size)
+            out_shape = init_shape[:-1] + (self.out_features,)
+            out_3d = out_2d.reshape(out_shape)
+            if self.bias is not None:
+                out_3d = out_3d + self.bias
+            return out_3d
+            
+        if self.transform_name == "haar_grp128_l2_packet_first_k":
+            device = x_2d.device
+            dtype = x_2d.dtype
+            if self.D is None:
+                self.D = get_ortho_matrix(self.target_pow_2, "haar_grp128_l2_packet", device=device, dtype=dtype)
+            out_2d = hybrid_matmul_haar_grp128_l2_first_k_torch(x_2d, self.weight, self.D, self.stamp_size)
+            out_shape = init_shape[:-1] + (self.out_features,)
+            out_3d = out_2d.reshape(out_shape)
+            if self.bias is not None:
+                out_3d = out_3d + self.bias
+            return out_3d
+            
+        if self.transform_name.startswith("spatial_g"):
+            device = x_2d.device
+            dtype = x_2d.dtype
+            parts = self.transform_name.split("_")
+            group_size_str = parts[1][1:]
+            stamp_per_group = int(parts[2][1:])
+            metric = "energy"
+            if len(parts) > 3:
+                metric = parts[3]
+                
+            K = self.target_pow_2
+            if group_size_str == "global" or group_size_str == "0":
+                group_size = K
+            else:
+                group_size = int(group_size_str)
+                
+            if K > x_2d.shape[1]:
+                act_padded, _ = pad_columns_to_power_of_2(x_2d, K)
+            else:
+                act_padded = x_2d
+            if K > self.weight.shape[1]:
+                wgt_padded, _ = pad_columns_to_power_of_2(self.weight, K)
+            else:
+                wgt_padded = self.weight
+                
+            out_2d = hybrid_matmul_spatial_grouped_torch(act_padded, wgt_padded, group_size, stamp_per_group, metric)
+            out_shape = init_shape[:-1] + (self.out_features,)
+            out_3d = out_2d.reshape(out_shape)
+            if self.bias is not None:
+                out_3d = out_3d + self.bias
+            return out_3d
+        if self.transform_name.startswith("blockmax_zero"):
+            device = x_2d.device
+            dtype = x_2d.dtype
+            parts = self.transform_name.split("_")
+            use_wht = ("wht" in parts)
+            use_butterfly = ("butterfly" in parts)
+            token_dynamic = ("dyn" in parts)
+            group_size = 32
+            for part in parts:
+                if part.startswith("g") and part[1:].isdigit():
+                    group_size = int(part[1:])
+                    break
+            
+            K = self.target_pow_2
+            if K > x_2d.shape[1]:
+                act_padded, _ = pad_columns_to_power_of_2(x_2d, K)
+            else:
+                act_padded = x_2d
+            if K > self.weight.shape[1]:
+                wgt_padded, _ = pad_columns_to_power_of_2(self.weight, K)
+            else:
+                wgt_padded = self.weight
+                
+            if use_butterfly:
+                if not hasattr(self, 'weight_transformed'):
+                    O, C = wgt_padded.shape
+                    wgt_blocks = wgt_padded.view(O, C // group_size, group_size)
+                    wgt_trans_blocks = apply_2pass_butterfly_torch(wgt_blocks, dim=-1)
+                    self.weight_transformed = wgt_trans_blocks.view(O, C)
+                out_2d = hybrid_matmul_zero_masked_butterfly_grouped_torch(act_padded, wgt_padded, self.weight_transformed, group_size, token_dynamic)
+            elif use_wht:
+                out_2d = hybrid_matmul_zero_masked_wht_grouped_torch(act_padded, wgt_padded, group_size, token_dynamic)
+            else:
+                out_2d = hybrid_matmul_zero_masked_grouped_torch(act_padded, wgt_padded, group_size, token_dynamic)
+                
+            out_shape = init_shape[:-1] + (self.out_features,)
+            out_3d = out_2d.reshape(out_shape)
+            if self.bias is not None:
+                out_3d = out_3d + self.bias
+            return out_3d
+            
+        if self.transform_name == "spatial_grp128":
+            device = x_2d.device
+            dtype = x_2d.dtype
+            K = self.target_pow_2
+            if K > x_2d.shape[1]:
+                act_padded, _ = pad_columns_to_power_of_2(x_2d, K)
+            else:
+                act_padded = x_2d
+            if K > self.weight.shape[1]:
+                wgt_padded, _ = pad_columns_to_power_of_2(self.weight, K)
+            else:
+                wgt_padded = self.weight
+                
+            out_2d = hybrid_matmul_spatial_grp128_torch(act_padded, wgt_padded, self.stamp_size)
+            out_shape = init_shape[:-1] + (self.out_features,)
+            out_3d = out_2d.reshape(out_shape)
+            if self.bias is not None:
+                out_3d = out_3d + self.bias
+            return out_3d
+            
+        if self.transform_name == "spatial_static_grp128":
+            device = x_2d.device
+            dtype = x_2d.dtype
+            K = self.target_pow_2
+            if K > x_2d.shape[1]:
+                act_padded, _ = pad_columns_to_power_of_2(x_2d, K)
+            else:
+                act_padded = x_2d
+            if K > self.weight.shape[1]:
+                wgt_padded, _ = pad_columns_to_power_of_2(self.weight, K)
+            else:
+                wgt_padded = self.weight
+                
+            out_2d = hybrid_matmul_spatial_static_grp128_torch(act_padded, wgt_padded, self.stamp_size)
+            out_shape = init_shape[:-1] + (self.out_features,)
+            out_3d = out_2d.reshape(out_shape)
+            if self.bias is not None:
+                out_3d = out_3d + self.bias
+            return out_3d
+
+            
+        device = x_2d.device
+        dtype = x_2d.dtype
+        
+        if self.D is None:
+            self.D = get_ortho_matrix(self.target_pow_2, self.transform_name, device=device, dtype=dtype)
+            
+            if self.pattern != "calibrated":
+                H_w = self.weight.shape[1]
+                if self.target_pow_2 > H_w:
+                    w_padded, _ = pad_columns_to_power_of_2(self.weight, self.target_pow_2)
+                else:
+                    w_padded = self.weight
+                    
+                wgt_trans = torch.matmul(w_padded, self.D.t())
+                
+                if self.pattern == "contiguous":
+                    stamp_idx = torch.arange(self.stamp_size, device=device)
+                    rest_idx = torch.arange(self.stamp_size, self.target_pow_2, device=device)
+                elif self.pattern == "interleaved":
+                    step = self.target_pow_2 // self.stamp_size
+                    stamp_idx = torch.arange(0, self.target_pow_2, step, device=device)[:self.stamp_size]
+                    mask = torch.ones(self.target_pow_2, dtype=torch.bool, device=device)
+                    mask[stamp_idx] = False
+                    rest_idx = torch.arange(self.target_pow_2, device=device)[mask]
+                    
+                self.wgt_trans_q8 = wgt_trans[:, stamp_idx].to(torch.bfloat16)
+                if len(rest_idx) > 0:
+                    wgt_q4, _, _, _ = quantize_mx_torch(
+                        wgt_trans[:, rest_idx], 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+                    )
+                    self.wgt_trans_q4 = wgt_q4
+                else:
+                    self.wgt_trans_q4 = torch.zeros(wgt_trans.shape[0], 0, device=device, dtype=dtype)
+                    
+        if self.pattern == "calibrated" and not self.is_calibrated:
+            H_x = x_2d.shape[1]
+            if self.target_pow_2 > H_x:
+                x_padded, _ = pad_columns_to_power_of_2(x_2d, self.target_pow_2)
+                w_padded, _ = pad_columns_to_power_of_2(self.weight, self.target_pow_2)
+            else:
+                x_padded = x_2d
+                w_padded = self.weight
+                
+            with torch.no_grad():
+                act_trans = torch.matmul(x_padded, self.D.t())
+                energy = torch.sum(act_trans**2, dim=0)
+                sorted_idx = torch.argsort(energy, descending=True)
+                self.stamp_indices = sorted_idx[:self.stamp_size]
+                
+                wgt_trans = torch.matmul(w_padded, self.D.t())
+                stamp_idx = self.stamp_indices
+                mask = torch.ones(self.target_pow_2, dtype=torch.bool, device=device)
+                mask[stamp_idx] = False
+                rest_idx = torch.arange(self.target_pow_2, device=device)[mask]
+                
+                self.wgt_trans_q8 = wgt_trans[:, stamp_idx].to(torch.bfloat16)
+                if len(rest_idx) > 0:
+                    wgt_q4, _, _, _ = quantize_mx_torch(
+                        wgt_trans[:, rest_idx], 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+                    )
+                    self.wgt_trans_q4 = wgt_q4
+                else:
+                    self.wgt_trans_q4 = torch.zeros(wgt_trans.shape[0], 0, device=device, dtype=dtype)
+            self.is_calibrated = True
+            
+        H_x = x_2d.shape[1]
+        if self.target_pow_2 > H_x:
+            x_padded, _ = pad_columns_to_power_of_2(x_2d, self.target_pow_2)
+        else:
+            x_padded = x_2d
+            
+        act_trans = torch.matmul(x_padded, self.D.t())
+        
+        if self.pattern == "contiguous":
+            stamp_idx = torch.arange(self.stamp_size, device=device)
+            rest_idx = torch.arange(self.stamp_size, self.target_pow_2, device=device)
+        elif self.pattern == "interleaved":
+            step = self.target_pow_2 // self.stamp_size
+            stamp_idx = torch.arange(0, self.target_pow_2, step, device=device)[:self.stamp_size]
+            mask = torch.ones(self.target_pow_2, dtype=torch.bool, device=device)
+            mask[stamp_idx] = False
+            rest_idx = torch.arange(self.target_pow_2, device=device)[mask]
+        elif self.pattern == "calibrated":
+            stamp_idx = self.stamp_indices
+            mask = torch.ones(self.target_pow_2, dtype=torch.bool, device=device)
+            mask[stamp_idx] = False
+            rest_idx = torch.arange(self.target_pow_2, device=device)[mask]
+            
+        act_q8_stamp = act_trans[:, stamp_idx].to(torch.bfloat16)
+        Rest_size = len(rest_idx)
+        if Rest_size > 0:
+            act_q4_rest, _, _, _ = quantize_mx_torch(
+                act_trans[:, rest_idx], 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True
+            )
+        else:
+            act_q4_rest = torch.zeros(act_trans.shape[0], 0, device=device, dtype=dtype)
+            
+        out_q8 = torch.matmul(act_q8_stamp, self.wgt_trans_q8.t())
+        if Rest_size > 0:
+            out_q4 = torch.matmul(act_q4_rest, self.wgt_trans_q4.t())
+        else:
+            out_q4 = 0
+            
+        out_2d = (out_q8 + out_q4).to(dtype)
+        
         out_shape = init_shape[:-1] + (self.out_features,)
         out_3d = out_2d.reshape(out_shape)
         
@@ -1186,6 +2633,50 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
                 continue
             if "attn" in name:
                 continue
+            if elem_format.startswith("permuted_swiglu") and "mlp" in name and isinstance(module, torch.nn.Linear):
+                continue
+                
+            if elem_format.startswith("permuted_swiglu") and type(module).__name__ == "LlamaMLP":
+                idx = name.rfind(".")
+                father_name = name[:idx]
+                father_module = model
+                if father_name:
+                     for part in father_name.split("."):
+                          father_module = getattr(father_module, part)
+                
+                layernorm_name = name.replace(".mlp", ".post_attention_layernorm")
+                modules_dict = dict(model.named_modules())
+                rms_gamma = modules_dict[layernorm_name].weight
+                
+                # Parse stamp and search box sizes
+                stamp_size = 0
+                stamp_size_dff = 0
+                search_box_size = 0
+                search_box_size_dff = 0
+                parts = elem_format.split("_")
+                for p in parts:
+                    if p.startswith("boxd") and p[4:].isdigit():
+                        search_box_size_dff = int(p[4:])
+                    elif p.startswith("box") and p[3:].isdigit():
+                        search_box_size = int(p[3:])
+                    elif p.startswith("s") and p[1:].isdigit():
+                        stamp_size = int(p[1:])
+                    elif p.startswith("d") and p[1:].isdigit():
+                        stamp_size_dff = int(p[1:])
+                        
+                new_mlp = TorchPermutedMLP(
+                    module, rms_gamma, block_size=32, prevent_zero=prevent_zero, four_over_six=four_over_six,
+                    elem_format="e2m1", scale_format=scale_format, use_hierarchical=use_hierarchical,
+                    clip_percentile=clip_percentile, rounding=rounding,
+                    stamp_size=stamp_size, stamp_size_dff=stamp_size_dff,
+                    search_box_size=search_box_size, search_box_size_dff=search_box_size_dff
+                )
+                
+                child_name = name[idx+1:] if idx != 0 else name
+                setattr(father_module, child_name, new_mlp)
+                print(f"Replaced entire SwiGLU MLP: {name} (box={search_box_size}, stamp={stamp_size}, dff_box={search_box_size_dff}, dff_stamp={stamp_size_dff})")
+                continue
+                
             if isinstance(module, torch.nn.Linear):
                 idx = name.rfind(".")
                 if idx == -1:
@@ -1227,6 +2718,23 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
                         module.in_features, module.out_features, module.bias is not None,
                         stamp_size=block_size, strategy=rounding
                     )
+                elif elem_format == "seq_mean_sub_grp32":
+                    new_m = TorchSeqMeanSubLinear(
+                        module.in_features, module.out_features, module.bias is not None,
+                        group_size=32, block_size=32, prevent_zero=prevent_zero, four_over_six=four_over_six,
+                        elem_format="e2m1", scale_format=scale_format,
+                        use_hierarchical=use_hierarchical, hadamard_size=hadamard_size, hadamard_seed=hadamard_seed,
+                        clip_percentile=clip_percentile, rounding=rounding, custom_rotation=custom_rotation
+                    )
+                elif elem_format.startswith("svd_outlier_k"):
+                    k_val = int(elem_format[13:])
+                    new_m = TorchSVDOutlierLinear(
+                        module.in_features, module.out_features, module.bias is not None,
+                        k=k_val, block_size=32, prevent_zero=prevent_zero, four_over_six=four_over_six,
+                        elem_format="e2m1", scale_format=scale_format,
+                        use_hierarchical=use_hierarchical, hadamard_size=hadamard_size, hadamard_seed=hadamard_seed,
+                        clip_percentile=clip_percentile, rounding=rounding, custom_rotation=custom_rotation
+                    )
                 elif elem_format.endswith("_seq"):
                     t_name = elem_format[:-4]
                     new_m = TorchTransformSeqLinear(
@@ -1234,10 +2742,18 @@ def run_eval(model_id, block_size=None, prevent_zero=True, four_over_six=False,
                         stamp_size=block_size, transform_name=t_name
                     )
                 elif elem_format.endswith("_feat"):
-                    t_name = elem_format[:-5]
+                    base = elem_format[:-5]
+                    known_patterns = ["contiguous", "interleaved", "calibrated"]
+                    pattern = "contiguous"
+                    t_name = base
+                    for pat in known_patterns:
+                        if base.endswith("_" + pat):
+                            pattern = pat
+                            t_name = base[:-(len(pat) + 1)]
+                            break
                     new_m = TorchTransformFeatLinear(
                         module.in_features, module.out_features, module.bias is not None,
-                        stamp_size=block_size, transform_name=t_name
+                        stamp_size=block_size, transform_name=t_name, pattern=pattern
                     )
                 else:
                     new_m = TorchMXLinear(
