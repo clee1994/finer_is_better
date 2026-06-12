@@ -856,6 +856,68 @@ def hybrid_matmul_zero_masked_wht_grouped_torch(act, wgt, group_size=32, token_d
     return Y_recon
 
 
+def hybrid_matmul_zero_masked_clipped_grouped_torch(act, wgt, group_size=32, token_dynamic=True, clip_ratio=None):
+    device = act.device
+    dtype = act.dtype
+    
+    T, C = act.shape
+    O = wgt.shape[0]
+    
+    assert C % group_size == 0
+    num_groups = C // group_size
+    
+    act_blocks = act.view(T, num_groups, group_size)
+    
+    if token_dynamic:
+        outlier_idx = torch.argmax(torch.abs(act_blocks), dim=-1) # [T, num_groups]
+        group_offsets = torch.arange(num_groups, device=device) * group_size
+        global_idx = outlier_idx + group_offsets.unsqueeze(0) # [T, num_groups]
+        
+        X_heavy = torch.gather(act, dim=-1, index=global_idx) # [T, num_groups]
+        
+        global_idx_expanded = global_idx.unsqueeze(1).expand(-1, O, -1) # [T, O, num_groups]
+        W_heavy = torch.gather(wgt.unsqueeze(0).expand(T, -1, -1), dim=-1, index=global_idx_expanded) # [T, O, num_groups]
+        
+        zeros = torch.zeros_like(X_heavy)
+        act_light_blocks = torch.scatter(act_blocks.clone(), dim=-1, index=outlier_idx.unsqueeze(-1), src=zeros.unsqueeze(-1))
+        
+        if clip_ratio is not None:
+            remaining_max = torch.max(torch.abs(act_light_blocks), dim=-1, keepdim=True).values
+            threshold = clip_ratio * remaining_max
+            act_light_blocks = torch.clamp(act_light_blocks, min=-threshold, max=threshold)
+            
+        act_light = act_light_blocks.view(T, C)
+        Y_heavy = torch.einsum('tg,tog->to', X_heavy.to(torch.bfloat16), W_heavy.to(torch.bfloat16))
+    else:
+        scores = torch.sum(act_blocks ** 2, dim=0) # [num_groups, group_size]
+        outlier_idx = torch.argmax(scores, dim=-1) # [num_groups]
+        group_offsets = torch.arange(num_groups, device=device) * group_size
+        global_idx = outlier_idx + group_offsets # [num_groups]
+        
+        X_heavy = act[:, global_idx] # [T, num_groups]
+        W_heavy = wgt[:, global_idx] # [O, num_groups]
+        
+        act_light = act.clone()
+        act_light[:, global_idx] = 0.0
+        
+        if clip_ratio is not None:
+            act_light_blocks = act_light.view(T, num_groups, group_size)
+            remaining_max = torch.max(torch.abs(act_light_blocks), dim=-1, keepdim=True).values
+            threshold = clip_ratio * remaining_max
+            act_light_blocks = torch.clamp(act_light_blocks, min=-threshold, max=threshold)
+            act_light = act_light_blocks.view(T, C)
+            
+        Y_heavy = torch.matmul(X_heavy.to(torch.bfloat16), W_heavy.to(torch.bfloat16).t())
+        
+    act_light_q, _, _, _ = quantize_mx_torch(act_light, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    wgt_q, _, _, _ = quantize_mx_torch(wgt, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    
+    Y_light = torch.matmul(act_light_q, wgt_q.t())
+    
+    Y_recon = (Y_heavy + Y_light).to(dtype)
+    return Y_recon
+
+
 def hybrid_matmul_zero_masked_butterfly_grouped_torch(act, wgt, wgt_transformed, group_size=32, token_dynamic=True):
     device = act.device
     dtype = act.dtype
@@ -2424,6 +2486,20 @@ class TorchTransformFeatLinear(nn.Linear):
             parts = self.transform_name.split("_")
             use_wht = ("wht" in parts)
             use_butterfly = ("butterfly" in parts)
+            use_clip = False
+            clip_ratio = None
+            for part in parts:
+                if part.startswith("clip"):
+                    use_clip = True
+                    val_str = part[4:]
+                    try:
+                        if "." in val_str:
+                            clip_ratio = float(val_str)
+                        else:
+                            clip_ratio = float(val_str) / 100.0
+                    except ValueError:
+                        clip_ratio = 1.0
+                    break
             token_dynamic = ("dyn" in parts)
             group_size = 32
             for part in parts:
@@ -2448,6 +2524,8 @@ class TorchTransformFeatLinear(nn.Linear):
                     wgt_trans_blocks = apply_2pass_butterfly_torch(wgt_blocks, dim=-1)
                     self.weight_transformed = wgt_trans_blocks.view(O, C)
                 out_2d = hybrid_matmul_zero_masked_butterfly_grouped_torch(act_padded, wgt_padded, self.weight_transformed, group_size, token_dynamic)
+            elif use_clip:
+                out_2d = hybrid_matmul_zero_masked_clipped_grouped_torch(act_padded, wgt_padded, group_size, token_dynamic, clip_ratio=clip_ratio)
             elif use_wht:
                 out_2d = hybrid_matmul_zero_masked_wht_grouped_torch(act_padded, wgt_padded, group_size, token_dynamic)
             else:
