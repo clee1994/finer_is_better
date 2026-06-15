@@ -135,31 +135,43 @@ def quant_fp8_torch(x, axis):
     
     return x_fp8 / scale_factor
 
-def apply_2pass_butterfly_torch(tensor, dim=-1):
-    scale = 0.5
+def apply_kpass_butterfly_torch(tensor, passes=2, dim=-1):
     assert tensor.shape[dim] == 32
+    scale = 0.5 ** (passes / 2.0)
+    device = tensor.device
+    dtype = tensor.dtype
     
-    a1 = tensor.narrow(dim, 0, 16)
-    b1 = tensor.narrow(dim, 16, 16)
-    tensor_1 = torch.cat([a1 + b1, a1 - b1], dim=dim)
-    
-    orig_shape = tensor_1.shape
-    if dim != -1 and dim != len(orig_shape) - 1:
-        tensor_1 = tensor_1.transpose(dim, -1)
-        orig_shape = tensor_1.shape
+    all_strides = [16, 8, 4, 2, 1]
+    strides_to_apply = []
+    for i in range(passes):
+        strides_to_apply.append(all_strides[i % 5])
         
-    reshaped = tensor_1.reshape(orig_shape[:-1] + (2, 16))
-    
-    a2 = reshaped.narrow(-1, 0, 8)
-    b2 = reshaped.narrow(-1, 8, 8)
-    tensor_2 = torch.cat([a2 + b2, a2 - b2], dim=-1)
-    
-    tensor_out = tensor_2.reshape(orig_shape) * scale
+    if dim != -1 and dim != tensor.ndim - 1:
+        tensor = tensor.transpose(dim, -1)
+        
+    orig_shape = tensor.shape
+    current = tensor.float()
+    for stride in strides_to_apply:
+        chunk_size = 2 * stride
+        num_chunks = 32 // chunk_size
+        reshaped = current.reshape(orig_shape[:-1] + (num_chunks, 2, stride))
+        
+        a = reshaped.narrow(-2, 0, 1)
+        b = reshaped.narrow(-2, 1, 1)
+        
+        sum_val = a + b
+        diff_val = a - b
+        
+        passed = torch.cat([sum_val, diff_val], dim=-2)
+        current = passed.reshape(orig_shape)
+        
+    tensor_out = (current * scale).to(dtype)
     
     if dim != -1 and dim != len(orig_shape) - 1:
         tensor_out = tensor_out.transpose(dim, -1)
         
     return tensor_out
+
 
 
 def get_haar_matrix(N, device="cuda", dtype=torch.float32):
@@ -918,7 +930,7 @@ def hybrid_matmul_zero_masked_clipped_grouped_torch(act, wgt, group_size=32, tok
     return Y_recon
 
 
-def hybrid_matmul_zero_masked_butterfly_grouped_torch(act, wgt, wgt_transformed, group_size=32, token_dynamic=True):
+def hybrid_matmul_zero_masked_butterfly_grouped_torch(act, wgt, wgt_transformed, group_size=32, token_dynamic=True, passes=2, n_extract=1):
     device = act.device
     dtype = act.dtype
     
@@ -931,35 +943,42 @@ def hybrid_matmul_zero_masked_butterfly_grouped_torch(act, wgt, wgt_transformed,
     act_blocks = act.view(T, num_groups, group_size)
     
     if token_dynamic:
-        outlier_idx = torch.argmax(torch.abs(act_blocks), dim=-1) # [T, num_groups]
-        group_offsets = torch.arange(num_groups, device=device) * group_size
-        global_idx = outlier_idx + group_offsets.unsqueeze(0) # [T, num_groups]
+        act_blocks_sliced = act_blocks[:, 0::n_extract, :]
+        num_extract_groups = act_blocks_sliced.shape[1]
         
-        X_heavy = torch.gather(act, dim=-1, index=global_idx) # [T, num_groups]
+        outlier_idx_sliced = torch.argmax(torch.abs(act_blocks_sliced), dim=-1) # [T, num_extract_groups]
         
-        global_idx_expanded = global_idx.unsqueeze(1).expand(-1, O, -1) # [T, O, num_groups]
-        W_heavy = torch.gather(wgt.unsqueeze(0).expand(T, -1, -1), dim=-1, index=global_idx_expanded) # [T, O, num_groups]
+        group_offsets_sliced = torch.arange(0, num_groups, step=n_extract, device=device) * group_size
+        global_idx_sliced = outlier_idx_sliced + group_offsets_sliced.unsqueeze(0) # [T, num_extract_groups]
         
-        zeros = torch.zeros_like(X_heavy)
-        act_light_blocks = torch.scatter(act_blocks.clone(), dim=-1, index=outlier_idx.unsqueeze(-1), src=zeros.unsqueeze(-1))
+        X_heavy = torch.gather(act, dim=-1, index=global_idx_sliced) # [T, num_extract_groups]
+        global_idx_sliced_expanded = global_idx_sliced.unsqueeze(1).expand(-1, O, -1) # [T, O, num_extract_groups]
+        W_heavy = torch.gather(wgt.unsqueeze(0).expand(T, -1, -1), dim=-1, index=global_idx_sliced_expanded) # [T, O, num_extract_groups]
+        
+        zeros = torch.zeros(T, num_extract_groups, 1, device=device, dtype=dtype)
+        act_light_blocks = act_blocks.clone()
+        act_light_blocks_sliced = act_light_blocks[:, 0::n_extract, :]
+        torch.scatter(act_light_blocks_sliced, dim=-1, index=outlier_idx_sliced.unsqueeze(-1), src=zeros)
         
         Y_heavy = torch.einsum('tg,tog->to', X_heavy.to(torch.bfloat16), W_heavy.to(torch.bfloat16))
     else:
-        scores = torch.sum(act_blocks ** 2, dim=0) # [num_groups, group_size]
-        outlier_idx = torch.argmax(scores, dim=-1) # [num_groups]
-        group_offsets = torch.arange(num_groups, device=device) * group_size
-        global_idx = outlier_idx + group_offsets # [num_groups]
+        act_blocks_sliced = act_blocks[:, 0::n_extract, :]
+        scores_sliced = torch.sum(act_blocks_sliced ** 2, dim=0) # [num_extract_groups, group_size]
+        outlier_idx_sliced = torch.argmax(scores_sliced, dim=-1) # [num_extract_groups]
         
-        X_heavy = act[:, global_idx] # [T, num_groups]
-        W_heavy = wgt[:, global_idx] # [O, num_groups]
+        group_offsets_sliced = torch.arange(0, num_groups, step=n_extract, device=device) * group_size
+        global_idx_sliced = outlier_idx_sliced + group_offsets_sliced # [num_extract_groups]
+        
+        X_heavy = act[:, global_idx_sliced] # [T, num_extract_groups]
+        W_heavy = wgt[:, global_idx_sliced] # [O, num_extract_groups]
         
         act_light = act.clone()
-        act_light[:, global_idx] = 0.0
+        act_light[:, global_idx_sliced] = 0.0
         act_light_blocks = act_light.view(T, num_groups, group_size)
         
         Y_heavy = torch.matmul(X_heavy.to(torch.bfloat16), W_heavy.to(torch.bfloat16).t())
         
-    act_light_transformed_blocks = apply_2pass_butterfly_torch(act_light_blocks, dim=-1)
+    act_light_transformed_blocks = apply_kpass_butterfly_torch(act_light_blocks, passes=passes, dim=-1)
     act_light_transformed = act_light_transformed_blocks.view(T, C)
     
     act_light_q, _, _, _ = quantize_mx_torch(act_light_transformed, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
@@ -2500,6 +2519,15 @@ class TorchTransformFeatLinear(nn.Linear):
                     except ValueError:
                         clip_ratio = 1.0
                     break
+            
+            passes = 2
+            n_extract = 1
+            for part in parts:
+                if part.startswith("p") and part[1:].isdigit():
+                    passes = int(part[1:])
+                elif part.startswith("n") and part[1:].isdigit():
+                    n_extract = int(part[1:])
+                    
             token_dynamic = ("dyn" in parts)
             group_size = 32
             for part in parts:
@@ -2521,9 +2549,12 @@ class TorchTransformFeatLinear(nn.Linear):
                 if not hasattr(self, 'weight_transformed'):
                     O, C = wgt_padded.shape
                     wgt_blocks = wgt_padded.view(O, C // group_size, group_size)
-                    wgt_trans_blocks = apply_2pass_butterfly_torch(wgt_blocks, dim=-1)
+                    wgt_trans_blocks = apply_kpass_butterfly_torch(wgt_blocks, passes=passes, dim=-1)
                     self.weight_transformed = wgt_trans_blocks.view(O, C)
-                out_2d = hybrid_matmul_zero_masked_butterfly_grouped_torch(act_padded, wgt_padded, self.weight_transformed, group_size, token_dynamic)
+                out_2d = hybrid_matmul_zero_masked_butterfly_grouped_torch(
+                    act_padded, wgt_padded, self.weight_transformed, group_size, token_dynamic,
+                    passes=passes, n_extract=n_extract
+                )
             elif use_clip:
                 out_2d = hybrid_matmul_zero_masked_clipped_grouped_torch(act_padded, wgt_padded, group_size, token_dynamic, clip_ratio=clip_ratio)
             elif use_wht:
