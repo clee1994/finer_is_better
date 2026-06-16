@@ -1071,6 +1071,63 @@ def hybrid_matmul_compact_first_residual_quant_grouped_torch(act, wgt_trans, R, 
     return Y_recon
 
 
+def hybrid_matmul_spatial_topk_residual_grouped_torch(act, wgt, R, token_dynamic=True):
+    device = act.device
+    dtype = act.dtype
+    
+    T, C = act.shape
+    O = wgt.shape[0]
+    
+    assert C % 32 == 0
+    num_groups = C // 32
+    
+    act_q, _, _, _ = quantize_mx_torch(act, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    wgt_q, _, _, _ = quantize_mx_torch(wgt, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    
+    err = act - act_q
+    
+    if token_dynamic:
+        err_blocks = err.view(T, num_groups, 32)
+        topk_res = torch.topk(torch.abs(err_blocks), k=R, dim=-1)
+        topk_idx = topk_res.indices
+        
+        group_offsets = torch.arange(num_groups, device=device) * 32
+        global_idx = topk_idx + group_offsets.unsqueeze(0).unsqueeze(-1)
+        global_idx_flat = global_idx.view(T, num_groups * R)
+        
+        X_heavy = torch.gather(err, dim=-1, index=global_idx_flat)
+        global_idx_expanded = global_idx_flat.unsqueeze(1).expand(-1, O, -1)
+        W_heavy = torch.gather(wgt.unsqueeze(0).expand(T, -1, -1), dim=-1, index=global_idx_expanded)
+        
+        X_heavy_q, _, _, _ = quantize_mx_torch(X_heavy, R, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+        
+        W_heavy_flat = W_heavy.reshape(T * O, num_groups * R)
+        W_heavy_q_flat, _, _, _ = quantize_mx_torch(W_heavy_flat, R, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+        W_heavy_q = W_heavy_q_flat.reshape(T, O, num_groups * R)
+        
+        Y_fine = torch.einsum('tg,tog->to', X_heavy_q, W_heavy_q)
+    else:
+        err_blocks = err.view(T, num_groups, 32)
+        scores = torch.sum(err_blocks ** 2, dim=0)
+        topk_idx = torch.topk(scores, k=R, dim=-1).indices
+        
+        group_offsets = torch.arange(num_groups, device=device) * 32
+        global_idx = topk_idx + group_offsets.unsqueeze(-1)
+        global_idx_flat = global_idx.view(num_groups * R)
+        
+        X_heavy = err[:, global_idx_flat]
+        W_heavy = wgt[:, global_idx_flat]
+        
+        X_heavy_q, _, _, _ = quantize_mx_torch(X_heavy, R, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+        W_heavy_q, _, _, _ = quantize_mx_torch(W_heavy, R, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+        
+        Y_fine = torch.matmul(X_heavy_q, W_heavy_q.t())
+        
+    Y_coarse = torch.matmul(act_q, wgt_q.t())
+    Y_recon = (Y_coarse + Y_fine).to(dtype)
+    return Y_recon
+
+
 def hybrid_matmul_spatial_grouped_torch(act, wgt, group_size, stamp_per_group, metric="energy"):
     device = act.device
     dtype = act.dtype
@@ -2580,6 +2637,33 @@ class TorchTransformFeatLinear(nn.Linear):
             if self.bias is not None:
                 out_3d = out_3d + self.bias
             return out_3d
+        if self.transform_name.startswith("spatial_topk"):
+            device = x_2d.device
+            dtype = x_2d.dtype
+            parts = self.transform_name.split("_")
+            R = 8
+            for part in parts:
+                if part.startswith("r") and part[1:].isdigit():
+                    R = int(part[1:])
+                    
+            token_dynamic = ("dyn" in parts)
+            K = self.target_pow_2
+            if K > x_2d.shape[1]:
+                act_padded, _ = pad_columns_to_power_of_2(x_2d, K)
+            else:
+                act_padded = x_2d
+            if K > self.weight.shape[1]:
+                wgt_padded, _ = pad_columns_to_power_of_2(self.weight, K)
+            else:
+                wgt_padded = self.weight
+                
+            out_2d = hybrid_matmul_spatial_topk_residual_grouped_torch(act_padded, wgt_padded, R, token_dynamic=token_dynamic)
+            out_shape = init_shape[:-1] + (self.out_features,)
+            out_3d = out_2d.reshape(out_shape)
+            if self.bias is not None:
+                out_3d = out_3d + self.bias
+            return out_3d
+
         if self.transform_name.startswith("compact_first_double_quant"):
             device = x_2d.device
             dtype = x_2d.dtype
