@@ -1037,6 +1037,40 @@ def hybrid_matmul_error_compaction_grouped_torch(act, wgt, wgt_trans_clipped, R,
     return Y_recon
 
 
+def hybrid_matmul_compact_first_residual_quant_grouped_torch(act, wgt_trans, R, passes=5):
+    device = act.device
+    dtype = act.dtype
+    
+    T, C = act.shape
+    O = wgt_trans.shape[0]
+    
+    assert C % 32 == 0
+    num_groups = C // 32
+    
+    act_blocks = act.view(T, num_groups, 32)
+    act_trans_blocks = apply_kpass_butterfly_torch(act_blocks, passes=passes, dim=-1)
+    act_trans = act_trans_blocks.view(T, C)
+    
+    act_trans_q, _, _, _ = quantize_mx_torch(act_trans, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    wgt_trans_q, _, _, _ = quantize_mx_torch(wgt_trans, 32, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    
+    err_trans = act_trans - act_trans_q
+    
+    err_trans_blocks = err_trans.view(T, num_groups, 32)
+    err_trans_clipped = err_trans_blocks.narrow(-1, 0, R).reshape(T, num_groups * R)
+    
+    wgt_trans_q_blocks = wgt_trans_q.view(O, num_groups, 32)
+    wgt_trans_clipped_q = wgt_trans_q_blocks.narrow(-1, 0, R).reshape(O, num_groups * R)
+    
+    err_trans_clipped_q, _, _, _ = quantize_mx_torch(err_trans_clipped, R, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    
+    Y_coarse = torch.matmul(act_trans_q, wgt_trans_q.t())
+    Y_fine = torch.matmul(err_trans_clipped_q, wgt_trans_clipped_q.t())
+    
+    Y_recon = (Y_coarse + Y_fine).to(dtype)
+    return Y_recon
+
+
 def hybrid_matmul_spatial_grouped_torch(act, wgt, group_size, stamp_per_group, metric="energy"):
     device = act.device
     dtype = act.dtype
@@ -2546,6 +2580,42 @@ class TorchTransformFeatLinear(nn.Linear):
             if self.bias is not None:
                 out_3d = out_3d + self.bias
             return out_3d
+        if self.transform_name.startswith("compact_first_double_quant"):
+            device = x_2d.device
+            dtype = x_2d.dtype
+            parts = self.transform_name.split("_")
+            R = 8
+            passes = 5
+            for part in parts:
+                if part.startswith("r") and part[1:].isdigit():
+                    R = int(part[1:])
+                elif part.startswith("p") and part[1:].isdigit():
+                    passes = int(part[1:])
+                    
+            K = self.target_pow_2
+            if K > x_2d.shape[1]:
+                act_padded, _ = pad_columns_to_power_of_2(x_2d, K)
+            else:
+                act_padded = x_2d
+            if K > self.weight.shape[1]:
+                wgt_padded, _ = pad_columns_to_power_of_2(self.weight, K)
+            else:
+                wgt_padded = self.weight
+                
+            if not hasattr(self, 'wgt_trans'):
+                O, C = wgt_padded.shape
+                num_groups = C // 32
+                wgt_blocks = wgt_padded.view(O, num_groups, 32)
+                wgt_trans_blocks = apply_kpass_butterfly_torch(wgt_blocks, passes=passes, dim=-1)
+                self.wgt_trans = wgt_trans_blocks.reshape(O, C)
+                
+            out_2d = hybrid_matmul_compact_first_residual_quant_grouped_torch(act_padded, self.wgt_trans, R, passes=passes)
+            out_shape = init_shape[:-1] + (self.out_features,)
+            out_3d = out_2d.reshape(out_shape)
+            if self.bias is not None:
+                out_3d = out_3d + self.bias
+            return out_3d
+
         if self.transform_name.startswith("error_compact"):
             device = x_2d.device
             dtype = x_2d.dtype
