@@ -990,6 +990,23 @@ def hybrid_matmul_zero_masked_butterfly_grouped_torch(act, wgt, wgt_transformed,
     return Y_recon
 
 
+def hybrid_matmul_residual_quant_grouped_torch(act, wgt, group_size=32):
+    device = act.device
+    dtype = act.dtype
+    
+    act_q1, _, _, _ = quantize_mx_torch(act, group_size, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    act_res = act - act_q1
+    act_res_q, _, _, _ = quantize_mx_torch(act_res, group_size, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    
+    wgt_q, _, _, _ = quantize_mx_torch(wgt, group_size, elem_format="e2m1", scale_format="e8m0", prevent_zero=True)
+    
+    Y_coarse = torch.matmul(act_q1, wgt_q.t())
+    Y_fine = torch.matmul(act_res_q, wgt_q.t())
+    
+    Y_recon = (Y_coarse + Y_fine).to(dtype)
+    return Y_recon
+
+
 def hybrid_matmul_spatial_grouped_torch(act, wgt, group_size, stamp_per_group, metric="energy"):
     device = act.device
     dtype = act.dtype
@@ -2499,6 +2516,32 @@ class TorchTransformFeatLinear(nn.Linear):
             if self.bias is not None:
                 out_3d = out_3d + self.bias
             return out_3d
+        if self.transform_name.startswith("double_quant"):
+            device = x_2d.device
+            dtype = x_2d.dtype
+            parts = self.transform_name.split("_")
+            group_size = 32
+            for part in parts:
+                if part.startswith("g") and part[1:].isdigit():
+                    group_size = int(part[1:])
+                    break
+            K = self.target_pow_2
+            if K > x_2d.shape[1]:
+                act_padded, _ = pad_columns_to_power_of_2(x_2d, K)
+            else:
+                act_padded = x_2d
+            if K > self.weight.shape[1]:
+                wgt_padded, _ = pad_columns_to_power_of_2(self.weight, K)
+            else:
+                wgt_padded = self.weight
+                
+            out_2d = hybrid_matmul_residual_quant_grouped_torch(act_padded, wgt_padded, group_size)
+            out_shape = init_shape[:-1] + (self.out_features,)
+            out_3d = out_2d.reshape(out_shape)
+            if self.bias is not None:
+                out_3d = out_3d + self.bias
+            return out_3d
+
         if self.transform_name.startswith("blockmax_zero"):
             device = x_2d.device
             dtype = x_2d.dtype
