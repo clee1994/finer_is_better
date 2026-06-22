@@ -1,0 +1,2 @@
+Model_Config,Baseline,BS=4,BS=8,BS=16,BS=32,BS=64,BS=128,BS=256
+Llama_double_quant_g32_feat_s32,,,,,1.7186268997192382,,,
